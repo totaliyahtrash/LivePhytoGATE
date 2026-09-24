@@ -75,12 +75,16 @@ app.add_middleware(
 
 @app.middleware("http")
 async def vercel_path_rewrite_middleware(request, call_next):
-    """Restores the original request URL path from Vercel proxy headers."""
-    matched_path = request.headers.get("x-matched-path") or request.headers.get("x-invoke-path")
-    if matched_path and not matched_path.endswith("index.py"):
-        request.scope["path"] = matched_path.split("?")[0]
-    elif request.scope.get("path") in ["/api/index.py", "/api/index"]:
-        request.scope["path"] = "/"
+    """Restores the original request URL path from Vercel rewrite parameter or proxy headers."""
+    orig_path = request.query_params.get("__path__")
+    if orig_path is not None:
+        request.scope["path"] = "/" + orig_path.lstrip("/")
+    else:
+        matched_path = request.headers.get("x-matched-path") or request.headers.get("x-invoke-path")
+        if matched_path and not matched_path.endswith("index.py"):
+            request.scope["path"] = matched_path.split("?")[0]
+        elif request.scope.get("path") in ["/api/index.py", "/api/index"]:
+            request.scope["path"] = "/"
     return await call_next(request)
 
 
