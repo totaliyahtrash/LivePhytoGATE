@@ -17,7 +17,8 @@ class Settings:
     def __init__(self):
         # Groq configuration (Sole Vision Engine)
         self.groq_api_key: str = os.getenv("GROQ_API_KEY", "").strip()
-        self.groq_model: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b").strip()
+        raw_model = os.getenv("GROQ_MODEL", "").strip()
+        self.groq_model: str = raw_model if raw_model else "qwen/qwen3.8-27b"
         try:
             self.groq_timeout_seconds: int = int(os.getenv("GROQ_TIMEOUT_SECONDS", "30"))
         except ValueError:

@@ -72,7 +72,7 @@ class GroqClient:
         http_client: Optional[Any] = None,
     ):
         self.api_key = api_key if api_key is not None else settings.groq_api_key
-        self.model = model if model is not None else settings.groq_model
+        self.model = model if model else (settings.groq_model or "qwen/qwen3.8-27b")
         self.timeout_seconds = timeout_seconds if timeout_seconds is not None else settings.groq_timeout_seconds
         self.http_client = http_client
         self.api_url = "https://api.groq.com/openai/v1/chat/completions"
