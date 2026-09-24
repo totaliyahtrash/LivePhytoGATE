@@ -49,22 +49,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const sectionWithheldReason = document.getElementById("section-withheld-reason");
   const withheldReasonText = document.getElementById("withheld-reason-text");
 
-  // Treatment Card
-  const treatmentCard = document.getElementById("treatment-card");
-  const treatmentBadge = document.getElementById("treatment-badge");
-  const treatmentUnavailableNotice = document.getElementById("treatment-unavailable-notice");
-  const treatmentGrid = document.getElementById("treatment-grid");
-  const treatmentCultural = document.getElementById("treatment-cultural");
-  const treatmentChemical = document.getElementById("treatment-chemical");
-  const treatmentOrganic = document.getElementById("treatment-organic");
-  const treatmentPrevention = document.getElementById("treatment-prevention");
-
-  // Overlay Card & Tabs
-  const overlayCard = document.getElementById("overlay-card");
-  const overlayImg = document.getElementById("overlay-img");
-  const overlayDisclaimerText = document.getElementById("overlay-disclaimer-text");
-  const tabBtns = document.querySelectorAll(".tab-btn");
-
   // Telemetry items
   const telStatus = document.getElementById("tel-status");
   const telModel = document.getElementById("tel-model");
@@ -228,19 +212,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     sectionWithheldReason.style.display = "none";
     withheldReasonText.textContent = "";
-
-    treatmentCard.style.display = "none";
-    if (treatmentUnavailableNotice) treatmentUnavailableNotice.style.display = "none";
-    if (treatmentGrid) treatmentGrid.style.display = "grid";
-    if (treatmentBadge) treatmentBadge.textContent = "LOCAL AGRONOMY DB";
-    treatmentCultural.innerHTML = "";
-    treatmentChemical.innerHTML = "";
-    treatmentOrganic.innerHTML = "";
-    treatmentPrevention.innerHTML = "";
-
-    overlayCard.style.display = "none";
-    overlayImg.src = "";
-    activeVisualizations = null;
   }
 
   function resetAllState() {
@@ -395,38 +366,6 @@ document.addEventListener("DOMContentLoaded", () => {
         limitationsList.innerHTML = "";
       }
 
-      // Treatment Profile (From Local Database)
-      if (result.treatment) {
-        treatmentCard.style.display = "block";
-        if (treatmentUnavailableNotice) treatmentUnavailableNotice.style.display = "none";
-        if (treatmentGrid) treatmentGrid.style.display = "grid";
-        if (treatmentBadge) treatmentBadge.textContent = "LOCAL AGRONOMY DB";
-        populateTreatmentList(treatmentCultural, result.treatment.cultural_controls);
-        populateTreatmentList(treatmentChemical, result.treatment.chemical_treatments);
-        populateTreatmentList(treatmentOrganic, result.treatment.organic_treatments);
-        populateTreatmentList(treatmentPrevention, result.treatment.prevention);
-      } else if (!isHealthy) {
-        // No local treatment in DB -> display honest agronomic notice, zero invented treatments
-        treatmentCard.style.display = "block";
-        if (treatmentUnavailableNotice) {
-          treatmentUnavailableNotice.style.display = "block";
-          treatmentUnavailableNotice.textContent = "Treatment information is not available in the local knowledge base.";
-        }
-        if (treatmentGrid) treatmentGrid.style.display = "none";
-        if (treatmentBadge) treatmentBadge.textContent = "LOCAL DB: NOT FOUND";
-      } else {
-        treatmentCard.style.display = "none";
-        if (treatmentUnavailableNotice) treatmentUnavailableNotice.style.display = "none";
-        if (treatmentGrid) treatmentGrid.style.display = "grid";
-        treatmentCultural.innerHTML = "";
-        treatmentChemical.innerHTML = "";
-        treatmentOrganic.innerHTML = "";
-        treatmentPrevention.innerHTML = "";
-      }
-
-      // Visual Overlays
-      setupOverlays();
-
     } else {
       // ----------------- WITHHELD STATE -----------------
       primaryVerdictCard.className = "card verdict-card";
@@ -480,15 +419,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       sectionDifferential.style.display = "none";
       alternativeDiagnosisText.textContent = "";
-
-      // NEVER show treatment or stale metrics on withheld!
-      treatmentCard.style.display = "none";
-      treatmentCultural.innerHTML = "";
-      treatmentChemical.innerHTML = "";
-      treatmentOrganic.innerHTML = "";
-      treatmentPrevention.innerHTML = "";
-      overlayCard.style.display = "none";
-      overlayImg.src = "";
     }
   }
 
@@ -518,58 +448,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     sectionWithheldReason.style.display = "block";
     withheldReasonText.textContent = `Communication error: ${errorMessage}. The system refuses to fabricate a fallback diagnosis.`;
-
-    treatmentCard.style.display = "none";
-    overlayCard.style.display = "none";
-  }
-
-  function populateTreatmentList(container, items) {
-    container.innerHTML = "";
-    if (!items || items.length === 0) {
-      container.innerHTML = "<li>No specific protocol recorded in local database.</li>";
-      return;
-    }
-    items.forEach(item => {
-      const li = document.createElement("li");
-      li.textContent = item;
-      container.appendChild(li);
-    });
-  }
-
-  // -------------------------------------------------------------
-  // Overlays & Heuristic Inspection
-  // -------------------------------------------------------------
-  function setupOverlays() {
-    overlayCard.style.display = "block";
-    // Default to original
-    setActiveOverlayTab("original");
-
-    tabBtns.forEach(btn => {
-      btn.onclick = () => {
-        const view = btn.getAttribute("data-view");
-        setActiveOverlayTab(view);
-      };
-    });
-  }
-
-  function setActiveOverlayTab(view) {
-    tabBtns.forEach(b => b.classList.remove("active"));
-    const activeBtn = document.querySelector(`.tab-btn[data-view="${view}"]`);
-    if (activeBtn) activeBtn.classList.add("active");
-
-    if (view === "original") {
-      overlayImg.src = currentPreviewUrl;
-      overlayDisclaimerText.textContent = "Original uploaded field specimen (preserved at full visual fidelity).";
-    } else if (view === "lesion" && activeVisualizations && activeVisualizations.lesion_segmentation) {
-      overlayImg.src = activeVisualizations.lesion_segmentation.image_data;
-      overlayDisclaimerText.textContent = activeVisualizations.lesion_segmentation.disclaimer;
-    } else if (view === "heatmap" && activeVisualizations && activeVisualizations.contrast_heatmap) {
-      overlayImg.src = activeVisualizations.contrast_heatmap.image_data;
-      overlayDisclaimerText.textContent = activeVisualizations.contrast_heatmap.disclaimer;
-    } else {
-      overlayImg.src = currentPreviewUrl;
-      overlayDisclaimerText.textContent = "Inspection visualization unavailable for this view.";
-    }
   }
 
 });
