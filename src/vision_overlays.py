@@ -6,7 +6,7 @@ and local computer vision inspection visualizations.
 CRITICAL ARCHITECTURAL GUARANTEE:
 All visual overlays generated herein are clearly documented as local computer vision
 heuristics (HSV/color-space segmentation and contrast heatmaps). They are NOT claimed
-to be Gemini neural attention maps.
+to be neural attention maps.
 """
 
 import base64
@@ -130,13 +130,13 @@ def generate_cv_overlays(normalized_jpeg_bytes: bytes) -> Dict[str, Any]:
             "lesion_segmentation": {
                 "title": "Local CV Inspection — Foliar Lesion Segmentation",
                 "type": "LOCAL_HEURISTIC_CV",
-                "disclaimer": "Heuristic computer vision segmentation for leaf inspection. NOT Gemini neural attention weights.",
+                "disclaimer": "Heuristic computer vision segmentation for leaf inspection. NOT neural attention weights.",
                 "image_data": f"data:image/jpeg;base64,{lesion_b64}"
             },
             "contrast_heatmap": {
                 "title": "Local CV Inspection — Chlorosis & Necrosis Contrast Heatmap",
                 "type": "LOCAL_HEURISTIC_CV",
-                "disclaimer": "Heuristic color contrast heatmap highlighting necrotic and chlorotic tissue gradients. NOT Gemini neural attention weights.",
+                "disclaimer": "Heuristic color contrast heatmap highlighting necrotic and chlorotic tissue gradients. NOT neural attention weights.",
                 "image_data": f"data:image/jpeg;base64,{heatmap_b64}"
             }
         }

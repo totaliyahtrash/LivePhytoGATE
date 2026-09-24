@@ -1,8 +1,8 @@
 """PhytoGATE Canonical Taxonomy Module.
 
 Maintains the controlled list of validated plant hosts and pathologies.
-Acts as a safety verification boundary: any crop/disease returned by Gemini
-that is outside the verified canonical taxonomy must be WITHHELD.
+Acts as a normalization boundary: normalizes crop/disease returned by the external vision model
+and checks for known treatment profiles in the local knowledge base.
 
 DISEASE-FIRST ARCHITECTURE:
 - Disease identification is primary.

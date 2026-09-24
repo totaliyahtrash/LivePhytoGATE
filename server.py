@@ -65,7 +65,7 @@ async def health_check():
     """Purely local readiness health check.
 
     CRITICAL ARCHITECTURAL GUARANTEE:
-    This endpoint makes ZERO Gemini calls.
+    This endpoint makes ZERO external AI provider calls.
     """
     return {"status": "healthy"}
 
@@ -89,7 +89,7 @@ async def get_taxonomy():
 async def get_disease(host: str, disease: str):
     """Deterministically retrieves local agronomic profile for host and disease.
 
-    Makes ZERO Gemini calls.
+    Makes ZERO external API calls.
     """
     profile = get_disease_profile(host, disease)
     if not profile:
@@ -122,7 +122,7 @@ async def diagnose_leaf(file: UploadFile = File(...)):
     Workflow:
     - Normalizes image to RGB JPEG
     - Checks deterministic SHA-256 cache
-    - Evaluates via Gemini multimodal vision
+    - Evaluates via Groq multimodal vision
     - Enforces canonical taxonomy boundary
     - Retrieves agronomic management locally
     - Withholds diagnosis honestly upon any error

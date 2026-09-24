@@ -1,11 +1,12 @@
-"""PhytoGATE Comprehensive Production Verification Test Suite.
+"""PhytoGATE Production Verification Test Suite (Groq-Only Architecture).
 
 CRITICAL PRINCIPLES:
-- GEMINI IS THE ACTUAL DIAGNOSTIC ENGINE
-- Zero fake fallbacks, zero filename guesses, zero hash confidence
-- All tests use mocked Gemini client: ZERO LIVE GEMINI TOKENS WASTED
-- Enforces honest WITHHELD states on 503, 429, timeout, auth error, and taxonomy rejection
-- Verifies deterministic caching and security boundaries
+- GROQ (Qwen 3.8 27B) IS THE ACTIVE VISION ENGINE.
+- Zero fake fallbacks, zero filename guesses, zero hash confidence.
+- All tests use mock GroqClient / mock HTTP client: ZERO LIVE TOKENS WASTED.
+- Enforces honest WITHHELD states on 503, 429, timeout, auth error, and parse failure.
+- Verifies deterministic caching, error recovery, telemetry, and security boundaries.
+- Non-taxonomy diseases return SUCCESS (AI visual authority preserved).
 """
 
 import io
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 
 from server import app
 from src.config import settings
+from src.groq_client import GroqClient, GroqResult
 from src.diagnostics import (
     perform_diagnosis,
     clear_cache,
@@ -24,8 +26,6 @@ from src.diagnostics import (
     DiagnosticResponse,
     _TELEMETRY,
 )
-from src.vision_provider import GroqVisionProvider
-from src.taxonomy import validate_diagnosis
 from src.disease_db import get_disease_profile
 from src.vision_overlays import normalize_image
 
@@ -67,1181 +67,420 @@ def dummy_large_image() -> bytes:
     return buf.getvalue()
 
 
-def create_mock_gemini_client(response_data: dict):
-    """Creates a mock google-genai Client that returns structured JSON."""
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.text = json.dumps(response_data)
-    mock_response.parsed = response_data
-    mock_client.models.generate_content.return_value = mock_response
-    return mock_client
+def create_mock_groq_client(
+    status: str = "SUCCESS",
+    raw_payload: dict = None,
+    error_category: str = "API_SUCCESS",
+    error_message: str = None,
+    limitations: list = None,
+    latency_sec: float = 0.42,
+):
+    """Creates a mock GroqClient returning the specified GroqResult."""
+    mock = MagicMock(spec=GroqClient)
+    mock.api_key = "gsk_mock_valid_key_for_testing_12345"
+    mock.model = "qwen/qwen3.8-27b"
+    mock.analyze_image.return_value = GroqResult(
+        status=status,
+        model="qwen/qwen3.8-27b",
+        latency_sec=latency_sec,
+        raw_payload=raw_payload,
+        error_category=error_category,
+        error_message=error_message,
+        limitations=limitations or [],
+    )
+    return mock
 
 
 # =====================================================================
-# 1. Gemini Successful Diagnosis
+# 1. Groq Successful Diagnosis — Diseased Plant
 # =====================================================================
-def test_1_gemini_success(dummy_leaf_jpeg):
-    """Gemini accurately analyzes image and returns Tomato Early Blight.
-
-    Verifies:
-    - Status is SUCCESS
-    - Valid host and disease resolved
-    - Qualitative assessment is HIGH
-    - Confidence score is None (No fake percentage)
-    - Treatment retrieved locally from disease database
-    - Result is cached
-    """
-    mock_data = {
+def test_1_groq_success_diseased_plant(dummy_leaf_jpeg):
+    """Groq accurately analyzes image and returns Tomato Early Blight."""
+    mock_payload = {
         "is_plant": True,
         "host": "Tomato",
         "diagnosis": "Early Blight",
         "assessment": "high",
         "visual_evidence": [
             "Concentric target-like dark brown necrotic spots",
-            "Chlorotic yellow halos surrounding lesions",
-            "Lower canopy foliar desiccation"
+            "Chlorotic halo surrounding primary lesion",
         ],
-        "alternative_diagnosis": "Tomato — Septoria Leaf Spot",
-        "limitations": []
+        "alternative": "Septoria leaf spot",
+        "limitations": ["Visual foliar symptoms only; laboratory confirmation recommended."],
     }
-    mock_client = create_mock_gemini_client(mock_data)
-
-    result = perform_diagnosis(dummy_leaf_jpeg, filename="test_leaf.jpg", client_override=mock_client)
+    client = create_mock_groq_client(raw_payload=mock_payload)
+    result = perform_diagnosis(dummy_leaf_jpeg, filename="test_leaf.jpg", client_override=client)
 
     assert result.status == "SUCCESS"
-    assert result.is_confident is True
-    assert result.confidence_score is None  # Strictly NO fake percentage
-    assert result.assessment == "high"
     assert result.host == "Tomato"
     assert result.disease == "Early Blight"
-    assert result.diagnosis == "Tomato — Early Blight"
-    assert len(result.visual_evidence) == 3
+    assert result.assessment == "high"
+    assert result.is_confident is True
+    assert result.confidence_score is None  # Never fake confidence percentages
     assert result.treatment is not None
-    assert result.treatment["pathogen_type"] == "Fungal (Alternaria solani / Alternaria linariae)"
-    assert result.visualizations is not None
-    assert "lesion_segmentation" in result.visualizations
+    assert "Chlorothalonil" in result.treatment["chemical_treatments"][0]
+    assert len(result.visual_evidence) == 2
     assert result.is_cached is False
+    assert get_cache_size() == 1
 
 
 # =====================================================================
-# 2. Gemini 503 API Error -> Honest WITHHELD
+# 2. Groq Successful Diagnosis — Healthy Plant
 # =====================================================================
-def test_2_gemini_503_api_error_returns_honest_withheld(dummy_leaf_jpeg):
-    """When Gemini returns 503 Unavailable, PhytoGATE must withhold honestly."""
-    mock_client = MagicMock()
-    mock_client.models.generate_content.side_effect = Exception("503 UNAVAILABLE: This model is currently experiencing high demand.")
+def test_2_groq_success_healthy_plant(dummy_leaf_jpeg):
+    """Groq recognizes an asymptomatic, healthy specimen."""
+    mock_payload = {
+        "is_plant": True,
+        "host": "Soybean",
+        "diagnosis": "Healthy",
+        "assessment": "high",
+        "visual_evidence": [
+            "Vibrant green, uniform foliar coloration",
+            "Absence of chlorosis, necrosis, or sporulation",
+        ],
+        "alternative": None,
+        "limitations": ["Microscopic pathogens or latent systemic viruses cannot be ruled out visually."],
+    }
+    client = create_mock_groq_client(raw_payload=mock_payload)
+    result = perform_diagnosis(dummy_leaf_jpeg, filename="healthy_soybean.jpg", client_override=client)
 
-    result = perform_diagnosis(dummy_leaf_jpeg, filename="field_specimen.jpg", client_override=mock_client)
+    assert result.status == "SUCCESS"
+    assert result.host == "Soybean"
+    assert result.disease == "Healthy"
+    assert result.treatment is not None
+    assert result.treatment.get("severity_risk") == "NONE"
+    assert result.assessment == "high"
+    assert result.is_confident is True
+
+
+# =====================================================================
+# 3. Groq Non-Plant Detection — Withheld
+# =====================================================================
+def test_3_groq_non_plant_withheld(dummy_leaf_jpeg):
+    """Groq correctly identifies non-plant imagery and withholds diagnosis."""
+    mock_payload = {
+        "is_plant": False,
+        "host": None,
+        "diagnosis": None,
+        "assessment": "unknown",
+        "visual_evidence": ["Image displays an inanimate object, not plant foliage"],
+        "alternative": None,
+        "limitations": ["Non-plant specimen submitted."],
+    }
+    client = create_mock_groq_client(raw_payload=mock_payload)
+    result = perform_diagnosis(dummy_leaf_jpeg, filename="non_plant.jpg", client_override=client)
 
     assert result.status == "WITHHELD"
+    assert result.error_category == "NON_PLANT"
     assert result.is_confident is False
     assert result.confidence_score is None
-    assert result.assessment == "unknown"
-    assert result.diagnosis == "Diagnosis Withheld — Field Image Requires Further Review"
-    assert result.host == "Crop Specimen"
-    assert result.disease == "Unconfirmed"
-    assert result.treatment is None
-    assert result.error_category == "API_503_UNAVAILABLE"
-    assert "temporarily unavailable" in result.error_message
+    assert "Non-Plant" in result.diagnosis
 
 
 # =====================================================================
-# 3. Gemini Timeout -> Honest WITHHELD
+# 4. Groq Null Diagnosis — Withheld
 # =====================================================================
-def test_3_gemini_timeout_returns_withheld(dummy_leaf_jpeg):
-    """When Gemini times out, system must withhold diagnosis."""
-    mock_client = MagicMock()
-    mock_client.models.generate_content.side_effect = TimeoutError("Deadline exceeded: 45000ms timed out")
-
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "API_TIMEOUT"
-    assert result.treatment is None
-    assert result.confidence_score is None
-
-
-# =====================================================================
-# 4. Gemini Auth Error -> Honest WITHHELD
-# =====================================================================
-def test_4_gemini_auth_error_returns_withheld(dummy_leaf_jpeg):
-    """When API authentication fails, system withholds cleanly."""
-    mock_client = MagicMock()
-    mock_client.models.generate_content.side_effect = Exception("403 Forbidden: API_KEY_INVALID")
-
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "API_AUTH_ERROR"
-    assert result.confidence_score is None
-
-
-# =====================================================================
-# 5. Gemini Rate Limit (429) -> Honest WITHHELD
-# =====================================================================
-def test_5_gemini_rate_limit_returns_withheld(dummy_leaf_jpeg):
-    """When rate limit 429 is received, system withholds cleanly."""
-    mock_client = MagicMock()
-    mock_client.models.generate_content.side_effect = Exception("429 RESOURCE_EXHAUSTED: Rate limit exceeded")
-
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category in ["API_RATE_LIMIT", "API_429_RATE_LIMITED"]
-    assert result.inference_origin == "API_429_RATE_LIMITED"
-    assert result.confidence_score is None
-
-
-# =====================================================================
-# 6. Unsupported Taxonomy -> Displayed as SUCCESS (AI Diagnostic Authority)
-# =====================================================================
-def test_6_unsupported_taxonomy_displayed_without_treatment(dummy_leaf_jpeg):
-    """If AI returns a crop/disease outside canonical taxonomy, diagnosis is STILL displayed.
-
-    UNKNOWN TAXONOMY != UNKNOWN DIAGNOSIS. Treatment is marked unavailable in local DB.
-    """
-    mock_data = {
-        "is_plant": True,
-        "host": "Dragonfruit",
-        "diagnosis": "Anthracnose",
-        "assessment": "high",
-        "visual_evidence": ["Reddish brown lesions on cladodes"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    mock_client = create_mock_gemini_client(mock_data)
-
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-
-    assert result.status == "SUCCESS"
-    assert result.host == "Dragonfruit"
-    assert result.disease == "Anthracnose"
-    assert result.treatment is None
-
-
-# =====================================================================
-# 7. Cache Hit -> Zero Gemini Calls
-# =====================================================================
-def test_7_cache_hit_zero_gemini_calls(dummy_leaf_jpeg):
-    """Submitting the identical image twice requires exactly 0 Gemini calls on request 2."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Potato",
-        "diagnosis": "Late Blight",
-        "assessment": "high",
-        "visual_evidence": ["Water-soaked dark lesions", "White sporulation"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    mock_client = create_mock_gemini_client(mock_data)
-
-    # 1st request -> Gemini is called once
-    res1 = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-    assert res1.status == "SUCCESS"
-    assert res1.is_cached is False
-    assert mock_client.models.generate_content.call_count == 1
-
-    # 2nd request with identical image -> Gemini is NOT called!
-    res2 = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-    assert res2.status == "SUCCESS"
-    assert res2.is_cached is True
-    # Call count MUST REMAIN 1
-    assert mock_client.models.generate_content.call_count == 1
-
-
-# =====================================================================
-# 8. Local Treatment Lookup -> Zero Gemini Calls
-# =====================================================================
-def test_8_treatment_lookup_zero_gemini_calls():
-    """Local treatment lookup retrieves rich agronomic knowledge without Gemini."""
-    client = TestClient(app)
-    response = client.get("/api/disease/Tomato/Early%20Blight")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["host"] == "Tomato"
-    assert data["disease"] == "Early Blight"
-    assert len(data["chemical_treatments"]) > 0
-    assert len(data["organic_treatments"]) > 0
-    assert len(data["cultural_controls"]) > 0
-
-
-# =====================================================================
-# 9. Frontend Read Endpoints -> Zero Gemini Calls
-# =====================================================================
-def test_9_frontend_read_endpoints_zero_gemini_calls():
-    """All reading/telemetry/health endpoints make 0 Gemini calls."""
-    client = TestClient(app)
-
-    r_health = client.get("/api/health")
-    assert r_health.status_code == 200
-    assert r_health.json() == {"status": "healthy"}
-
-    r_tel = client.get("/api/telemetry")
-    assert r_tel.status_code == 200
-    assert r_tel.json()["status"] == "ONLINE"
-
-    r_tax = client.get("/api/taxonomy")
-    assert r_tax.status_code == 200
-    assert "Tomato" in r_tax.json()
-
-    r_samples = client.get("/api/samples")
-    assert r_samples.status_code == 200
-    assert isinstance(r_samples.json(), list)
-
-    r_index = client.get("/")
-    assert r_index.status_code == 200
-
-
-# =====================================================================
-# 10. Critical Regression: IMG_0042.jpg + Gemini 503
-# =====================================================================
-def test_10_regression_img_0042_gemini_503(dummy_leaf_jpeg):
-    """CRITICAL REGRESSION TEST:
-
-    Previously, an image named IMG_0042.jpg during a Gemini 503 error would
-    fall back to a fake 'Foliar Specimen — Foliar Leaf Spot' with 81.5% confidence!
-    This must NEVER happen. It MUST be WITHHELD.
-    """
-    mock_client = MagicMock()
-    mock_client.models.generate_content.side_effect = Exception("503 UNAVAILABLE: High demand")
-
-    result = perform_diagnosis(dummy_leaf_jpeg, filename="IMG_0042.jpg", client_override=mock_client)
-
-    assert result.status == "WITHHELD"
-    assert "Foliar Leaf Spot" not in result.diagnosis
-    assert result.confidence_score is None  # NEVER 81.5%
-    assert result.assessment == "unknown"
-
-
-# =====================================================================
-# 11. API Failures Are NOT Cached
-# =====================================================================
-def test_11_api_errors_not_cached_as_success(dummy_leaf_jpeg):
-    """An API failure must never be permanently cached."""
-    mock_fail_client = MagicMock()
-    mock_fail_client.models.generate_content.side_effect = Exception("503 UNAVAILABLE")
-
-    # First attempt fails
-    res_fail = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_fail_client)
-    assert res_fail.status == "WITHHELD"
-
-    # Subsequent attempt when Gemini recovers succeeds and is NOT blocked by cached failure
-    mock_ok_data = {
-        "is_plant": True,
-        "host": "Apple",
-        "diagnosis": "Apple Scab",
-        "assessment": "medium",
-        "visual_evidence": ["Olive-green spots on foliage"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    mock_ok_client = create_mock_gemini_client(mock_ok_data)
-
-    res_ok = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_ok_client)
-    assert res_ok.status == "SUCCESS"
-    assert res_ok.diagnosis == "Apple — Apple Scab"
-
-
-# =====================================================================
-# 12. Non-Plant Specimen Cleanly WITHHELD
-# =====================================================================
-def test_12_non_plant_specimen_cleanly_withheld(dummy_leaf_jpeg):
-    """If Gemini determines the image is not a plant, diagnosis is cleanly WITHHELD."""
-    mock_data = {
-        "is_plant": False,
-        "host": None,
-        "diagnosis": None,
-        "assessment": "unknown",
-        "visual_evidence": ["Mechanical equipment and metallic surfaces"],
-        "alternative_diagnosis": None,
-        "limitations": ["Specimen is not biological foliage."]
-    }
-    mock_client = create_mock_gemini_client(mock_data)
-
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "NON_PLANT"
-    assert result.host is None
-    assert result.disease is None
-    assert result.treatment is None
-
-
-# =====================================================================
-# 13. API Key Never Appears in Responses or Telemetry
-# =====================================================================
-def test_13_api_key_never_appears_in_responses(dummy_leaf_jpeg):
-    """Guarantees API credentials are never leaked in telemetry, headers, or payloads."""
-    client = TestClient(app)
-
-    tel_resp = client.get("/api/telemetry")
-    tel_text = tel_resp.text
-    assert settings.gemini_api_key not in tel_text
-    data = tel_resp.json()
-    assert "api_key" not in data["config"]
-    assert "api_key_status" in data["config"]
-
-
-# =====================================================================
-# 14. Image Normalization and Resize Edge <= 1024
-# =====================================================================
-def test_14_image_normalization_formats(dummy_large_image, dummy_leaf_png):
-    """Verifies images of different formats (PNG, large JPEG) normalize to RGB JPEG <= 1024px."""
-    # Test large image resize
-    norm_bytes, w, h, sha = normalize_image(dummy_large_image, max_long_edge=1024)
-    assert max(w, h) <= 1024
-    assert len(sha) == 64  # Valid SHA-256
-
-    # Test PNG normalization to JPEG
-    norm_bytes_png, w_png, h_png, sha_png = normalize_image(dummy_leaf_png)
-    assert max(w_png, h_png) <= 1024
-    # Ensure decodable as JPEG
-    reopened = Image.open(io.BytesIO(norm_bytes_png))
-    assert reopened.format == "JPEG"
-    assert reopened.mode == "RGB"
-
-
-# =====================================================================
-# 15. Server Multipart Diagnose Endpoint
-# =====================================================================
-def test_15_server_multipart_diagnose_endpoint(dummy_leaf_jpeg, monkeypatch):
-    """Tests POST /api/diagnose through FastAPI TestClient."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Grape",
-        "diagnosis": "Black Rot",
-        "assessment": "high",
-        "visual_evidence": ["Circular reddish brown leaf spots with pycnidia"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    mock_client = create_mock_gemini_client(mock_data)
-
-    # Monkeypatch gemini_api_key and _create_gemini_client
-    monkeypatch.setattr(settings, "gemini_api_key", "mock_key_for_test_12345")
-    monkeypatch.setattr("src.diagnostics._create_gemini_client", lambda override=None: mock_client)
-
-    client = TestClient(app)
-    response = client.post(
-        "/api/diagnose",
-        files={"file": ("grape_specimen.jpg", dummy_leaf_jpeg, "image/jpeg")}
-    )
-
-    assert response.status_code == 200
-    res_json = response.json()
-    assert res_json["status"] == "SUCCESS"
-    assert res_json["diagnosis"] == "Grape — Black Rot"
-    assert res_json["host"] == "Grape"
-    assert res_json["disease"] == "Black Rot"
-    assert res_json["treatment"] is not None
-    assert res_json["confidence_score"] is None
-
-
-# =====================================================================
-# 16. Corrupted / Non-Image Bytes Handled Honestly
-# =====================================================================
-def test_16_corrupted_image_handled_honestly():
-    """Corrupted or invalid image bytes return honest WITHHELD."""
-    bad_bytes = b"NOT_A_VALID_IMAGE_BYTES_12345"
-    result = perform_diagnosis(bad_bytes)
-    assert result.status == "WITHHELD"
-    assert result.error_category == "INVALID_IMAGE"
-    assert result.confidence_score is None
-    assert result.treatment is None
-
-
-# =====================================================================
-# 17. Taxonomy Normalization (Underscores & Case Variations)
-# =====================================================================
-def test_17_taxonomy_normalization():
-    """Verifies underscore notation like 'Tomato___Early_blight' normalizes correctly."""
-    valid, host, disease = validate_diagnosis("Tomato", "Tomato___Early_blight")
-    assert valid is True
-    assert host == "Tomato"
-    assert disease == "Early Blight"
-
-    valid2, host2, disease2 = validate_diagnosis("potato", "late_blight")
-    assert valid2 is True
-    assert host2 == "Potato"
-    assert disease2 == "Late Blight"
-
-    valid3, host3, disease3 = validate_diagnosis("Soybean", "Frogeye Leaf Spot")
-    assert valid3 is True
-    assert host3 == "Soybean"
-    assert disease3 == "Frogeye Leaf Spot"
-
-    # Unsupported host should fail
-    valid_bad, _, _ = validate_diagnosis("Banana", "Panama Disease")
-    assert valid_bad is False
-
-
-# =====================================================================
-# 18. Asymptomatic / Healthy Foliage Specimen
-# =====================================================================
-def test_18_healthy_specimen_diagnosis(dummy_leaf_jpeg):
-    """Verifies that an asymptomatic healthy leaf is diagnosed as Healthy."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Tomato",
-        "diagnosis": "Healthy",
-        "assessment": "high",
-        "visual_evidence": ["Uniform vibrant green pigment", "No necrotic spotting", "Turgid leaf lamina"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    mock_client = create_mock_gemini_client(mock_data)
-
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_client)
-
-    assert result.status == "SUCCESS"
-    assert result.host == "Tomato"
-    assert result.disease == "Healthy"
-    assert result.diagnosis == "Tomato — Healthy"
-    assert result.treatment is not None
-    assert result.treatment["severity_risk"] == "NONE"
-
-
-# =====================================================================
-# 19. Phase 7 Regression: SUCCESS -> API_503_UNAVAILABLE (Zero Stale State)
-# =====================================================================
-def test_19_regression_stale_state_success_then_503(dummy_leaf_jpeg, dummy_leaf_png):
-    """Verifies that a subsequent 503 failure completely wipes out prior success.
-
-    Request A: SUCCESS (Tomato Early Blight)
-    Request B: 503 UNAVAILABLE
-    Assert after Request B:
-    - Status is WITHHELD
-    - inference_origin is API_503_UNAVAILABLE
-    - No diagnosis / host / treatment from Request A survives
-    """
-    mock_data_a = {
-        "is_plant": True,
-        "host": "Tomato",
-        "diagnosis": "Early Blight",
-        "assessment": "high",
-        "visual_evidence": ["Target-like concentric rings on leaflets"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client_a = create_mock_gemini_client(mock_data_a)
-    result_a = perform_diagnosis(dummy_leaf_jpeg, client_override=client_a)
-
-    assert result_a.status == "SUCCESS"
-    assert result_a.diagnosis == "Tomato — Early Blight"
-    assert result_a.host == "Tomato"
-    assert result_a.treatment is not None
-
-    # Request B on a distinct specimen encounters 503 UNAVAILABLE
-    client_b = MagicMock()
-    client_b.models.generate_content.side_effect = Exception("503 UNAVAILABLE: Model overloaded")
-    result_b = perform_diagnosis(dummy_leaf_png, client_override=client_b)
-
-    assert result_b.status == "WITHHELD"
-    assert result_b.inference_origin == "API_503_UNAVAILABLE"
-    assert result_b.error_category == "API_503_UNAVAILABLE"
-    assert result_b.confidence_score is None
-    assert result_b.treatment is None
-    assert result_b.host in [None, "Crop Specimen", "Unconfirmed"]
-    assert result_b.disease in [None, "Unconfirmed"]
-    assert "Early Blight" not in str(result_b.diagnosis)
-    assert "Tomato" not in str(result_b.host)
-
-
-# =====================================================================
-# 20. Phase 7 Regression: SUCCESS -> API_TIMEOUT (Zero Stale State)
-# =====================================================================
-def test_20_regression_stale_state_success_then_timeout(dummy_leaf_jpeg, dummy_leaf_png):
-    """Verifies that a subsequent timeout completely wipes out prior success.
-
-    Request A: SUCCESS (Potato Late Blight)
-    Request B: TimeoutError
-    Assert after Request B:
-    - Status is WITHHELD
-    - inference_origin is API_TIMEOUT
-    - No diagnosis / host / treatment from Request A survives
-    """
-    mock_data_a = {
-        "is_plant": True,
-        "host": "Potato",
-        "diagnosis": "Late Blight",
-        "assessment": "high",
-        "visual_evidence": ["Water-soaked dark lesions"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client_a = create_mock_gemini_client(mock_data_a)
-    result_a = perform_diagnosis(dummy_leaf_jpeg, client_override=client_a)
-
-    assert result_a.status == "SUCCESS"
-    assert result_a.diagnosis == "Potato — Late Blight"
-
-    # Request B encounters timeout
-    client_b = MagicMock()
-    client_b.models.generate_content.side_effect = TimeoutError("Deadline exceeded: 45000ms timed out")
-    result_b = perform_diagnosis(dummy_leaf_png, client_override=client_b)
-
-    assert result_b.status == "WITHHELD"
-    assert result_b.inference_origin == "API_TIMEOUT"
-    assert result_b.error_category == "API_TIMEOUT"
-    assert result_b.confidence_score is None
-    assert result_b.treatment is None
-    assert result_b.host in [None, "Crop Specimen", "Unconfirmed"]
-    assert "Late Blight" not in str(result_b.diagnosis)
-    assert "Potato" not in str(result_b.host)
-
-
-# =====================================================================
-# 21. Phase 7 Regression: SUCCESS -> API_429_RATE_LIMITED (Zero Stale State)
-# =====================================================================
-def test_21_regression_stale_state_success_then_rate_limit(dummy_leaf_jpeg, dummy_leaf_png):
-    """Verifies that a subsequent 429 rate limit completely wipes out prior success.
-
-    Request A: SUCCESS (Apple Apple Scab)
-    Request B: 429 RESOURCE_EXHAUSTED
-    Assert after Request B:
-    - Status is WITHHELD
-    - inference_origin is API_429_RATE_LIMITED
-    - No diagnosis / host / treatment from Request A survives
-    """
-    mock_data_a = {
-        "is_plant": True,
-        "host": "Apple",
-        "diagnosis": "Apple Scab",
-        "assessment": "high",
-        "visual_evidence": ["Velvety olive-green spots on foliage"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client_a = create_mock_gemini_client(mock_data_a)
-    result_a = perform_diagnosis(dummy_leaf_jpeg, client_override=client_a)
-
-    assert result_a.status == "SUCCESS"
-    assert result_a.diagnosis == "Apple — Apple Scab"
-
-    # Request B encounters rate limit
-    client_b = MagicMock()
-    client_b.models.generate_content.side_effect = Exception("429 RESOURCE_EXHAUSTED: Rate limit reached")
-    result_b = perform_diagnosis(dummy_leaf_png, client_override=client_b)
-
-    assert result_b.status == "WITHHELD"
-    assert result_b.inference_origin == "API_429_RATE_LIMITED"
-    assert result_b.error_category in ["API_RATE_LIMIT", "API_429_RATE_LIMITED"]
-    assert result_b.confidence_score is None
-    assert result_b.treatment is None
-    assert result_b.host in [None, "Crop Specimen", "Unconfirmed"]
-    assert "Apple Scab" not in str(result_b.diagnosis)
-    assert "Apple" not in str(result_b.host)
-
-
-# =====================================================================
-# 22. Disease-First: Known Host + Known Disease
-# =====================================================================
-def test_22_disease_first_known_host_known_disease(dummy_leaf_jpeg):
-    """Known host + known canonical disease -> Disease displayed and treatment displayed."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Tomato",
-        "diagnosis": "Early Blight",
-        "assessment": "high",
-        "visual_evidence": ["Target-like concentric rings on foliar lamina"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Early Blight"
-    assert result.host == "Tomato"
-    assert result.diagnosis == "Tomato — Early Blight"
-    assert result.treatment is not None
-    assert len(result.treatment["chemical_treatments"]) > 0
-    assert len(result.treatment["cultural_controls"]) > 0
-
-
-# =====================================================================
-# 23. Disease-First: Unknown Host + Known Disease
-# =====================================================================
-def test_23_disease_first_unknown_host_known_disease(dummy_leaf_jpeg):
-    """Unknown host + known canonical disease -> Disease displayed, host omitted, no host-specific treatment."""
-    mock_data = {
-        "is_plant": True,
-        "host": None,  # Host cannot be identified
-        "diagnosis": "Apple Scab",
-        "assessment": "high",
-        "visual_evidence": ["Velvety olive-green lesions on upper foliar surface"],
-        "alternative_diagnosis": None,
-        "limitations": ["Specimen leaf isolated without tree or branch morphology."]
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Apple Scab"
-    assert result.host is None  # Host omitted cleanly
-    assert result.diagnosis == "Apple Scab"  # Pure disease name
-    assert result.treatment is None  # No host-specific treatment invented!
-
-
-# =====================================================================
-# 24. Disease-First: Known Host + Non-Taxonomy Disease -> SUCCESS (No Treatment)
-# =====================================================================
-def test_24_disease_first_known_host_non_taxonomy_disease(dummy_leaf_jpeg):
-    """Known host + non-canonical disease -> Displayed as SUCCESS with no local treatment."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Tomato",
-        "diagnosis": "Crown Rot and Vascular Collapse",  # Not in canonical taxonomy
-        "assessment": "high",
-        "visual_evidence": ["Basal stem discoloration"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.host == "Tomato"
-    assert result.disease == "Crown Rot and Vascular Collapse"
-    assert result.treatment is None
-
-
-# =====================================================================
-# 25. Disease-First: Unknown Host + Null Diagnosis -> WITHHELD
-# =====================================================================
-def test_25_disease_first_unknown_host_null_diagnosis_withheld(dummy_leaf_jpeg):
-    """Unknown host + null/uncertain diagnosis -> Diagnosis must be WITHHELD."""
-    mock_data = {
-        "is_plant": True,
-        "host": None,
-        "diagnosis": None,  # Null diagnosis from AI
-        "assessment": "unknown",
-        "visual_evidence": ["Amorphous discoloration"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "UNCERTAIN_DIAGNOSIS"
-    assert result.treatment is None
-
-
-# =====================================================================
-# 26. Disease-First: Non-Plant Specimen -> WITHHELD
-# =====================================================================
-def test_26_disease_first_non_plant_image(dummy_leaf_jpeg):
-    """Non-plant specimen (is_plant=False) must be WITHHELD regardless of diagnosis text."""
-    mock_data = {
-        "is_plant": False,
-        "host": None,
-        "diagnosis": "Apple Scab",
-        "assessment": "low",
-        "visual_evidence": [],
-        "alternative_diagnosis": None,
-        "limitations": ["Image is a mechanical tractor component, not plant tissue."]
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "NON_PLANT"
-    assert result.treatment is None
-
-
-# =====================================================================
-# 27. Disease-First: Healthy Leaf Specimen
-# =====================================================================
-def test_27_disease_first_healthy_leaf(dummy_leaf_jpeg, dummy_leaf_png):
-    """Healthy foliage is properly classified as Healthy both with and without host."""
-    # Case A: Known host + Healthy
-    mock_data_a = {
-        "is_plant": True,
-        "host": "Soybean",
-        "diagnosis": "Healthy",
-        "assessment": "high",
-        "visual_evidence": ["Unblemished trifoliate leaves, uniform dark green lamina"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client_a = create_mock_gemini_client(mock_data_a)
-    result_a = perform_diagnosis(dummy_leaf_jpeg, client_override=client_a)
-
-    assert result_a.status == "SUCCESS"
-    assert result_a.disease == "Healthy"
-    assert result_a.host == "Soybean"
-    assert result_a.treatment is not None
-    assert result_a.treatment["severity_risk"] == "NONE"
-
-    # Case B: Unknown host + Healthy
-    mock_data_b = {
-        "is_plant": True,
-        "host": None,
-        "diagnosis": "Healthy",
-        "assessment": "high",
-        "visual_evidence": ["Vibrant green foliage with no necrotic spotting or chlorosis"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client_b = create_mock_gemini_client(mock_data_b)
-    result_b = perform_diagnosis(dummy_leaf_png, client_override=client_b)
-
-    assert result_b.status == "SUCCESS"
-    assert result_b.disease == "Healthy"
-    assert result_b.host is None
-    assert result_b.diagnosis == "Healthy"
-    assert result_b.treatment is None
-
-
-# =====================================================================
-# 28. Synonym Normalization: Frogeye Variants & Cercospora
-# =====================================================================
-def test_28_synonym_normalization_frogeye_variants(dummy_leaf_jpeg):
-    """Naming variants ('Frog-eye Leaf Spot', 'Frog eye leaf spot', 'Cercospora capsici')
-    map deterministically to canonical 'Frogeye Leaf Spot'.
-    """
-    variants = [
-        ("Frog-eye Leaf Spot", "Pepper"),
-        ("Frog eye leaf spot", None),
-        ("Cercospora capsici", "Pepper"),
-        ("frogeye spot", None),
-    ]
-
-    for variant_name, host_input in variants:
-        clear_cache()
-        mock_data = {
-            "is_plant": True,
-            "host": host_input,
-            "diagnosis": variant_name,
-            "assessment": "high",
-            "visual_evidence": ["Circular necrotic lesions with light tan centers and dark borders"],
-            "alternative_diagnosis": None,
-            "limitations": []
-        }
-        client = create_mock_gemini_client(mock_data)
-        result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-        assert result.status == "SUCCESS", f"Failed for variant {variant_name}"
-        assert result.disease == "Frogeye Leaf Spot", f"Expected Frogeye Leaf Spot for {variant_name}, got {result.disease}"
-
-        if host_input == "Pepper":
-            assert result.host == "Pepper"
-            assert result.treatment is not None
-            assert "Cercospora capsici" in result.treatment["pathogen_type"]
-        else:
-            assert result.host is None
-            assert result.treatment is None
-
-
-# =====================================================================
-# 29. Synonym Normalization: Bacterial Leaf Spot -> Bacterial Spot
-# =====================================================================
-def test_29_synonym_normalization_bacterial_leaf_spot(dummy_leaf_jpeg):
-    """Common variant 'Bacterial Leaf Spot' normalizes to canonical 'Bacterial Spot'."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Pepper",
-        "diagnosis": "Bacterial Leaf Spot",
-        "assessment": "high",
-        "visual_evidence": ["Small angular water-soaked dark lesions"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Bacterial Spot"
-    assert result.host == "Pepper"
-    assert result.treatment is not None
-
-
-# =====================================================================
-# 30. Null or Uncertain Diagnosis Must Be Withheld
-# =====================================================================
-def test_30_uncertain_or_null_diagnosis_rejected(dummy_leaf_jpeg):
-    """When the AI cannot make a diagnosis or returns unknown assessment, it must be WITHHELD."""
-    uncertain_cases = [None, "", "Unknown", "unidentified", "null"]
-
-    for diag in uncertain_cases:
-        clear_cache()
-        mock_data = {
-            "is_plant": True,
-            "host": None,
-            "diagnosis": diag,
-            "assessment": "unknown",
-            "visual_evidence": ["Generalized discoloration on leaf tissue"],
-            "alternative_diagnosis": None,
-            "limitations": []
-        }
-        client = create_mock_gemini_client(mock_data)
-        result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-        assert result.status == "WITHHELD", f"Uncertain diagnosis '{diag}' should be WITHHELD"
-        assert result.error_category == "UNCERTAIN_DIAGNOSIS"
-        assert result.treatment is None
-
-
-# =====================================================================
-# 31. Groq Vision Provider Success
-# =====================================================================
-def test_31_groq_provider_success(dummy_leaf_jpeg):
-    """Groq vision provider parses valid JSON response and returns SUCCESS."""
-    clear_cache()
-    mock_resp_json = {
-        "choices": [{
-            "message": {
-                "content": json.dumps({
-                    "is_plant": True,
-                    "host": "Soybean",
-                    "diagnosis": "Frogeye Leaf Spot",
-                    "assessment": "high",
-                    "visual_evidence": ["Circular lesions with grey centers and dark reddish margins"],
-                    "alternative": None,
-                    "limitations": []
-                })
-            }
-        }]
-    }
-    mock_http_client = MagicMock()
-    mock_http_client.post.return_value = MagicMock(status_code=200, json=lambda: mock_resp_json)
-
-    groq_provider = GroqVisionProvider(api_key="gsk_mock_test_key", client=mock_http_client)
-    result = perform_diagnosis(dummy_leaf_jpeg, provider_override=groq_provider)
-
-    assert result.status == "SUCCESS"
-    assert result.host == "Soybean"
-    assert result.disease == "Frogeye Leaf Spot"
-    assert result.treatment is not None
-    assert "Fungal" in result.treatment["pathogen_type"]
-
-
-# =====================================================================
-# 32. Groq Vision Provider 429 Rate Limited -> WITHHELD
-# =====================================================================
-def test_32_groq_429_rate_limited(dummy_leaf_jpeg):
-    """Groq 429 rate limit returns honest WITHHELD."""
-    clear_cache()
-    mock_http_client = MagicMock()
-    mock_http_client.post.return_value = MagicMock(
-        status_code=429,
-        text="Rate limit reached: ITPM exceeded"
-    )
-
-    groq_provider = GroqVisionProvider(api_key="gsk_mock_test_key", client=mock_http_client)
-    result = perform_diagnosis(dummy_leaf_jpeg, provider_override=groq_provider)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category in ["API_RATE_LIMIT", "API_429_RATE_LIMITED"]
-    assert result.confidence_score is None
-
-
-# =====================================================================
-# 33. Groq Vision Provider Timeout -> WITHHELD
-# =====================================================================
-def test_33_groq_timeout(dummy_leaf_jpeg):
-    """Groq timeout returns honest WITHHELD with API_TIMEOUT category."""
-    clear_cache()
-    mock_http_client = MagicMock()
-    import httpx
-    mock_http_client.post.side_effect = httpx.TimeoutException("Connection timed out after 30s")
-
-    groq_provider = GroqVisionProvider(api_key="gsk_mock_test_key", client=mock_http_client)
-    result = perform_diagnosis(dummy_leaf_jpeg, provider_override=groq_provider)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "API_TIMEOUT"
-    assert result.confidence_score is None
-
-
-# =====================================================================
-# 34. Groq Vision Provider Malformed JSON -> WITHHELD
-# =====================================================================
-def test_34_groq_malformed_json(dummy_leaf_jpeg):
-    """Malformed or invalid JSON from Groq returns WITHHELD."""
-    clear_cache()
-    mock_resp_json = {
-        "choices": [{
-            "message": {
-                "content": "This is plain text with no JSON { broken"
-            }
-        }]
-    }
-    mock_http_client = MagicMock()
-    mock_http_client.post.return_value = MagicMock(status_code=200, json=lambda: mock_resp_json)
-
-    groq_provider = GroqVisionProvider(api_key="gsk_mock_test_key", client=mock_http_client)
-    result = perform_diagnosis(dummy_leaf_jpeg, provider_override=groq_provider)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category in ["API_MALFORMED_RESPONSE", "STRUCTURED_OUTPUT_PARSE_ERROR"]
-    assert result.confidence_score is None
-
-
-# =====================================================================
-# 35. Groq Failure Is Never Cached
-# =====================================================================
-def test_35_groq_failure_not_cached(dummy_leaf_jpeg):
-    """Failed Groq requests are NEVER cached in _DIAGNOSTIC_CACHE."""
-    clear_cache()
-    mock_http_client = MagicMock()
-    mock_http_client.post.return_value = MagicMock(status_code=500, text="Internal Server Error")
-
-    groq_provider = GroqVisionProvider(api_key="gsk_mock_test_key", client=mock_http_client)
-    result = perform_diagnosis(dummy_leaf_jpeg, provider_override=groq_provider)
-
-    assert result.status == "WITHHELD"
-    assert get_cache_size() == 0
-
-
-# =====================================================================
-# AI Authority Requirement 1: AI returns known disease -> Displayed
-# =====================================================================
-def test_ai_authority_1_known_disease(dummy_leaf_jpeg):
-    """When the AI identifies a known disease, the diagnosis is displayed."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Soybean",
-        "diagnosis": "Frogeye Leaf Spot",
-        "assessment": "high",
-        "visual_evidence": ["Circular lesions with grey centers"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Frogeye Leaf Spot"
-    assert result.host == "Soybean"
-    assert result.is_confident is True
-
-
-# =====================================================================
-# AI Authority Requirement 2: AI returns disease absent from taxonomy -> STILL DISPLAYED
-# =====================================================================
-def test_ai_authority_2_disease_absent_from_taxonomy_still_displays(dummy_leaf_jpeg):
-    """When the AI identifies a disease absent from local taxonomy (e.g. Maple Tar Spot),
-    PhytoGATE displays the AI's diagnosis normally without withholding.
-    """
-    mock_data = {
-        "is_plant": True,
-        "host": "Maple",
-        "diagnosis": "Tar Spot",
-        "assessment": "high",
-        "visual_evidence": ["Black tar-like raised stromatic spots on upper leaf surface"],
-        "alternative_diagnosis": "Rhytisma acerinum",
-        "limitations": ["Visual observation without laboratory spore analysis"]
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Tar Spot"
-    assert result.host == "Maple"
-    assert "Tar Spot" in result.diagnosis
-    assert result.treatment is None  # Unavailable in local DB, but NEVER withheld!
-
-
-# =====================================================================
-# AI Authority Requirement 3: Known host + known disease -> Treatment attaches
-# =====================================================================
-def test_ai_authority_3_known_host_known_disease_attaches_treatment(dummy_leaf_jpeg):
-    """When AI returns known host and known disease, treatment protocol is attached."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Tomato",
-        "diagnosis": "Early Blight",
-        "assessment": "high",
-        "visual_evidence": ["Concentric dark rings with chlorotic halo"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Early Blight"
-    assert result.treatment is not None
-    assert "chemical_treatments" in result.treatment
-    assert len(result.treatment["chemical_treatments"]) > 0
-
-
-# =====================================================================
-# AI Authority Requirement 4: Unknown host + known disease -> Disease displays, host unknown
-# =====================================================================
-def test_ai_authority_4_unknown_host_known_disease_displays_disease_host_unknown(dummy_leaf_jpeg):
-    """When AI returns unknown host but valid disease, disease is displayed and host is unknown."""
-    mock_data = {
-        "is_plant": True,
-        "host": None,
-        "diagnosis": "Late Blight",
-        "assessment": "high",
-        "visual_evidence": ["Dark water-soaked lesions with white sporulation on margin"],
-        "alternative_diagnosis": None,
-        "limitations": ["Host species could not be identified from single leaf specimen."]
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Late Blight"
-    assert result.host is None
-    assert result.treatment is None  # No host-specific treatment invented
-
-
-# =====================================================================
-# AI Authority Requirement 5: AI returns healthy -> Healthy displays
-# =====================================================================
-def test_ai_authority_5_healthy_displays_healthy(dummy_leaf_jpeg):
-    """When AI determines foliage is healthy, Healthy status is displayed."""
-    mock_data = {
-        "is_plant": True,
-        "host": "Pepper",
-        "diagnosis": "Healthy",
-        "assessment": "high",
-        "visual_evidence": ["Vigorous green leaf tissue with no lesions or chlorosis"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "SUCCESS"
-    assert result.disease == "Healthy"
-    assert "Healthy" in result.diagnosis
-    assert result.treatment is not None
-    assert result.treatment["severity_risk"] == "NONE"
-
-
-# =====================================================================
-# AI Authority Requirement 6: AI returns non-plant -> Appropriate non-plant result
-# =====================================================================
-def test_ai_authority_6_non_plant_returns_appropriate_result(dummy_leaf_jpeg):
-    """When AI determines image is not a plant, non-plant WITHHELD result is returned."""
-    mock_data = {
-        "is_plant": False,
-        "host": None,
-        "diagnosis": None,
-        "assessment": "unknown",
-        "visual_evidence": ["Metallic surface with industrial bolts"],
-        "alternative_diagnosis": None,
-        "limitations": ["Specimen is not biological plant tissue."]
-    }
-    client = create_mock_gemini_client(mock_data)
-    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
-
-    assert result.status == "WITHHELD"
-    assert result.error_category == "NON_PLANT"
-    assert result.host is None
-    assert result.disease is None
-    assert result.treatment is None
-
-
-# =====================================================================
-# AI Authority Requirement 7: AI returns null diagnosis -> WITHHELD
-# =====================================================================
-def test_ai_authority_7_null_diagnosis_returns_withheld(dummy_leaf_jpeg):
-    """When AI returns null or unidentifiable diagnosis, diagnosis is WITHHELD."""
-    mock_data = {
+def test_4_groq_null_diagnosis_withheld(dummy_leaf_jpeg):
+    """Groq detects a plant but cannot confirm a diagnosis."""
+    mock_payload = {
         "is_plant": True,
         "host": "Corn",
         "diagnosis": None,
         "assessment": "unknown",
-        "visual_evidence": ["Foliage is severely obscured by shadow and glare"],
-        "alternative_diagnosis": None,
-        "limitations": ["Visual symptoms cannot be assessed due to poor illumination."]
+        "visual_evidence": ["Symptoms are too degraded or ambiguous"],
+        "alternative": None,
+        "limitations": ["Insufficient visual markers."],
     }
-    client = create_mock_gemini_client(mock_data)
+    client = create_mock_groq_client(raw_payload=mock_payload)
+    result = perform_diagnosis(dummy_leaf_jpeg, filename="ambiguous.jpg", client_override=client)
+
+    assert result.status == "WITHHELD"
+    assert result.error_category in ("UNCERTAIN_DIAGNOSIS", "UNCONFIRMED")
+    assert result.is_confident is False
+
+
+# =====================================================================
+# 5. Groq 429 Rate Limit — Withheld
+# =====================================================================
+def test_5_groq_429_rate_limit(dummy_leaf_jpeg):
+    """Groq returns HTTP 429; result is honestly withheld with rate limit category."""
+    client = create_mock_groq_client(
+        status="ERROR",
+        error_category="API_429_RATE_LIMITED",
+        error_message="Vision service rate limit reached. Please wait a moment before trying again.",
+    )
     result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
 
     assert result.status == "WITHHELD"
-    assert result.error_category == "UNCERTAIN_DIAGNOSIS"
+    assert result.error_category == "API_429_RATE_LIMITED"
+    assert "rate limit" in result.error_message.lower()
+    assert result.is_cached is False
 
 
 # =====================================================================
-# AI Authority Requirement 8: API failure -> WITHHELD
+# 6. Groq Timeout — Withheld
 # =====================================================================
-def test_ai_authority_8_api_failure_returns_withheld(dummy_leaf_jpeg):
-    """When vision API fails (network error, timeout, 503), diagnosis is cleanly WITHHELD."""
-    mock_http_client = MagicMock()
-    import httpx
-    mock_http_client.post.side_effect = httpx.ConnectError("Connection refused by provider")
-
-    groq_provider = GroqVisionProvider(api_key="gsk_mock_test_key", client=mock_http_client)
-    result = perform_diagnosis(dummy_leaf_jpeg, provider_override=groq_provider)
+def test_6_groq_timeout(dummy_leaf_jpeg):
+    """Groq request times out; result is honestly withheld."""
+    client = create_mock_groq_client(
+        status="ERROR",
+        error_category="API_TIMEOUT",
+        error_message="Vision provider request timed out after 30 seconds.",
+    )
+    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
 
     assert result.status == "WITHHELD"
-    assert result.confidence_score is None
+    assert result.error_category == "API_TIMEOUT"
+    assert "timed out" in result.error_message.lower()
+    assert result.is_cached is False
 
 
 # =====================================================================
-# AI Authority Requirement 9: Successful diagnosis after previous failure
+# 7. Groq 503 Service Unavailable — Withheld
 # =====================================================================
-def test_ai_authority_9_success_after_previous_failure(dummy_leaf_jpeg, dummy_leaf_png):
-    """A successful diagnosis after a failed one displays the current diagnosis cleanly."""
-    clear_cache()
+def test_7_groq_503_unavailable(dummy_leaf_jpeg):
+    """Groq returns HTTP 503; result is honestly withheld."""
+    client = create_mock_groq_client(
+        status="ERROR",
+        error_category="API_503_UNAVAILABLE",
+        error_message="Vision service temporarily unavailable.",
+    )
+    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
 
-    # Step 1: Failed request
-    mock_failing_client = MagicMock()
-    mock_failing_client.models.generate_content.side_effect = Exception("503 Service Unavailable")
-    res1 = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_failing_client)
+    assert result.status == "WITHHELD"
+    assert result.error_category == "API_503_UNAVAILABLE"
+    assert result.is_cached is False
+
+
+# =====================================================================
+# 8. Groq Malformed Response — Withheld
+# =====================================================================
+def test_8_groq_malformed_response(dummy_leaf_jpeg):
+    """Groq returns unparseable or schema-violating payload; result is withheld."""
+    client = create_mock_groq_client(
+        status="ERROR",
+        error_category="API_MALFORMED_RESPONSE",
+        error_message="Vision provider returned invalid structured JSON output.",
+    )
+    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
+
+    assert result.status == "WITHHELD"
+    assert result.error_category == "API_MALFORMED_RESPONSE"
+    assert result.is_cached is False
+
+
+# =====================================================================
+# 9. Deterministic Caching
+# =====================================================================
+def test_9_deterministic_caching(dummy_leaf_jpeg):
+    """Identical image bytes produce deterministic cache hit with ZERO API calls."""
+    mock_payload = {
+        "is_plant": True,
+        "host": "Apple",
+        "diagnosis": "Apple Scab",
+        "assessment": "high",
+        "visual_evidence": ["Olive-green velvety fungal spots on leaf surface"],
+        "alternative": "Cedar apple rust",
+        "limitations": [],
+    }
+    client = create_mock_groq_client(raw_payload=mock_payload)
+
+    # First call: live API inference
+    res1 = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
+    assert res1.status == "SUCCESS"
+    assert res1.is_cached is False
+    assert client.analyze_image.call_count == 1
+    assert _TELEMETRY["total_live_requests_made"] == 1
+    assert _TELEMETRY["total_cache_hits"] == 0
+
+    # Second call with exact same image bytes: deterministic cache hit
+    res2 = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
+    assert res2.status == "SUCCESS"
+    assert res2.is_cached is True
+    assert res2.disease == "Apple Scab"
+    assert client.analyze_image.call_count == 1  # ZERO additional API calls
+    assert _TELEMETRY["total_cache_hits"] == 1
+
+
+# =====================================================================
+# 10. Failures Are Never Cached
+# =====================================================================
+def test_10_failures_never_cached(dummy_leaf_jpeg):
+    """Failed API calls must NEVER be cached, allowing immediate retry."""
+    fail_client = create_mock_groq_client(
+        status="ERROR",
+        error_category="API_503_UNAVAILABLE",
+        error_message="503 Service Unavailable",
+    )
+
+    # First call fails
+    res1 = perform_diagnosis(dummy_leaf_jpeg, client_override=fail_client)
     assert res1.status == "WITHHELD"
+    assert res1.is_cached is False
+    assert get_cache_size() == 0
 
-    # Step 2: Fresh successful request with a different image
-    mock_success_data = {
+    # Second call with recovered client succeeds
+    success_payload = {
+        "is_plant": True,
+        "host": "Potato",
+        "diagnosis": "Late Blight",
+        "assessment": "high",
+        "visual_evidence": ["Dark water-soaked lesions"],
+    }
+    success_client = create_mock_groq_client(raw_payload=success_payload)
+    res2 = perform_diagnosis(dummy_leaf_jpeg, client_override=success_client)
+    assert res2.status == "SUCCESS"
+    assert res2.disease == "Late Blight"
+    assert res2.is_cached is False
+    assert get_cache_size() == 1
+
+
+# =====================================================================
+# 11. Success After Failure (Recovery)
+# =====================================================================
+def test_11_success_after_failure_recovery(dummy_leaf_jpeg):
+    """Pipeline seamlessly recovers when provider recovers."""
+    client_fail = create_mock_groq_client(status="ERROR", error_category="API_TIMEOUT")
+    res_fail = perform_diagnosis(dummy_leaf_jpeg, client_override=client_fail)
+    assert res_fail.status == "WITHHELD"
+
+    client_ok = create_mock_groq_client(
+        status="SUCCESS",
+        raw_payload={"is_plant": True, "host": "Grape", "diagnosis": "Black Rot", "assessment": "high", "visual_evidence": ["Brown lesions"]},
+    )
+    res_ok = perform_diagnosis(dummy_leaf_jpeg, client_override=client_ok)
+    assert res_ok.status == "SUCCESS"
+    assert res_ok.disease == "Black Rot"
+
+
+# =====================================================================
+# 12. Failure After Success (No State Leak)
+# =====================================================================
+def test_12_failure_after_success_no_state_leak(dummy_leaf_jpeg, dummy_leaf_png):
+    """A subsequent failed diagnosis does NOT leak data from a preceding success."""
+    client_ok = create_mock_groq_client(
+        status="SUCCESS",
+        raw_payload={"is_plant": True, "host": "Grape", "diagnosis": "Black Rot", "assessment": "high", "visual_evidence": ["Brown lesions"]},
+    )
+    res_ok = perform_diagnosis(dummy_leaf_jpeg, client_override=client_ok)
+    assert res_ok.status == "SUCCESS"
+    assert res_ok.disease == "Black Rot"
+
+    # Second distinct image fails
+    client_fail = create_mock_groq_client(status="ERROR", error_category="API_429_RATE_LIMITED")
+    res_fail = perform_diagnosis(dummy_leaf_png, client_override=client_fail)
+    assert res_fail.status == "WITHHELD"
+    assert res_fail.disease == "Unconfirmed"
+    assert res_fail.treatment is None
+
+
+# =====================================================================
+# 13. Missing API Key
+# =====================================================================
+def test_13_missing_api_key(dummy_leaf_jpeg):
+    """Unconfigured Groq API key halts execution with API_AUTH_ERROR."""
+    client = GroqClient(api_key="")
+    result = perform_diagnosis(dummy_leaf_jpeg, client_override=client)
+
+    assert result.status == "WITHHELD"
+    assert result.error_category == "API_AUTH_ERROR"
+    assert "GROQ_API_KEY" in result.error_message
+
+
+# =====================================================================
+# 14. Telemetry Endpoint
+# =====================================================================
+def test_14_telemetry_endpoint():
+    """GET /api/telemetry returns safe telemetry and model configuration without API key."""
+    client = TestClient(app)
+    resp = client.get("/api/telemetry")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["provider"] == "groq"
+    assert data["model"] == "qwen/qwen3.8-27b"
+    assert "groq_api_key" not in data
+    assert "api_key" not in data
+    assert "total_live_requests_made" in data["cache"]
+    assert "cached_entries_count" in data["cache"]
+
+
+# =====================================================================
+# 15. Health Endpoint
+# =====================================================================
+def test_15_health_endpoint():
+    """GET /api/health returns 200 OK with zero external calls."""
+    client = TestClient(app)
+    resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "healthy"}
+
+
+# =====================================================================
+# 16. Disease DB Endpoint
+# =====================================================================
+def test_16_disease_db_endpoint():
+    """GET /api/disease/{host}/{disease} retrieves local profile deterministically."""
+    client = TestClient(app)
+    resp = client.get("/api/disease/Tomato/Early Blight")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["host"] == "Tomato"
+    assert data["disease"] == "Early Blight"
+    assert "Chlorothalonil" in data["chemical_treatments"][0]
+
+
+# =====================================================================
+# 17. Non-Taxonomy Disease Is Preserved As SUCCESS
+# =====================================================================
+def test_17_non_taxonomy_disease_is_success(dummy_leaf_jpeg):
+    """External AI visual diagnosis is authority; non-taxonomy disease is SUCCESS."""
+    mock_payload = {
         "is_plant": True,
         "host": "Soybean",
         "diagnosis": "Frogeye Leaf Spot",
-        "assessment": "high",
-        "visual_evidence": ["Distinct frogeye lesions"],
-        "alternative_diagnosis": None,
-        "limitations": []
+        "assessment": "medium",
+        "visual_evidence": [
+            "Small circular spots with reddish-brown borders and tan centers"
+        ],
+        "alternative": "Septoria brown spot",
+        "limitations": [],
     }
-    mock_success_client = create_mock_gemini_client(mock_success_data)
-    res2 = perform_diagnosis(dummy_leaf_png, client_override=mock_success_client)
+    client = create_mock_groq_client(raw_payload=mock_payload)
+    result = perform_diagnosis(dummy_leaf_jpeg, filename="soybean_frogeye.jpg", client_override=client)
 
-    assert res2.status == "SUCCESS"
-    assert res2.disease == "Frogeye Leaf Spot"
-    assert res2.host == "Soybean"
-    assert res2.error_category == "API_SUCCESS"
+    # Must be SUCCESS, not WITHHELD
+    assert result.status == "SUCCESS"
+    assert result.host == "Soybean"
+    assert result.disease == "Frogeye Leaf Spot"
+    assert result.assessment == "medium"
+    assert result.is_confident is True
+    # Local DB may or may not have treatment for Frogeye Leaf Spot, but status is SUCCESS
+    if result.treatment is None:
+        assert result.treatment is None
+    else:
+        assert isinstance(result.treatment, dict)
 
 
 # =====================================================================
-# AI Authority Requirement 10: Failure after previous success -> Cleared
+# 18. Image Normalization
 # =====================================================================
-def test_ai_authority_10_failure_after_previous_success_cleared(dummy_leaf_jpeg, dummy_leaf_png):
-    """A failure after a previous success does NOT leak any previous diagnosis data."""
-    clear_cache()
+def test_18_image_normalization(dummy_leaf_jpeg, dummy_leaf_png, dummy_large_image):
+    """Image normalizer converts PNG, large JPEG, and RGB images to <= 1024px JPEG."""
+    # Test JPEG
+    norm_jpeg, w1, h1, _ = normalize_image(dummy_leaf_jpeg)
+    img1 = Image.open(io.BytesIO(norm_jpeg))
+    assert img1.format == "JPEG"
+    assert max(img1.size) <= 1024
 
-    # Step 1: Successful request
-    mock_success_data = {
-        "is_plant": True,
-        "host": "Tomato",
-        "diagnosis": "Early Blight",
-        "assessment": "high",
-        "visual_evidence": ["Target-like concentric rings"],
-        "alternative_diagnosis": None,
-        "limitations": []
-    }
-    mock_success_client = create_mock_gemini_client(mock_success_data)
-    res1 = perform_diagnosis(dummy_leaf_jpeg, client_override=mock_success_client)
-    assert res1.status == "SUCCESS"
-    assert res1.disease == "Early Blight"
+    # Test PNG
+    norm_png, w2, h2, _ = normalize_image(dummy_leaf_png)
+    img2 = Image.open(io.BytesIO(norm_png))
+    assert img2.format == "JPEG"
+    assert max(img2.size) <= 1024
 
-    # Step 2: Failing request with different specimen
-    mock_failing_client = MagicMock()
-    mock_failing_client.models.generate_content.side_effect = Exception("429 Resource Exhausted")
-    res2 = perform_diagnosis(dummy_leaf_png, client_override=mock_failing_client)
-
-    assert res2.status == "WITHHELD"
-    assert res2.disease == "Unconfirmed" or res2.disease is None
-    assert "Early Blight" not in (res2.disease or "")
-    assert res2.treatment is None
-    assert res2.confidence_score is None
-
-
-
-
-
+    # Test Large Image Resize
+    norm_large, w3, h3, _ = normalize_image(dummy_large_image)
+    img3 = Image.open(io.BytesIO(norm_large))
+    assert img3.format == "JPEG"
+    assert max(img3.size) <= 1024

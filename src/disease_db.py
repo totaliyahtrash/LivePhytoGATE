@@ -1,7 +1,7 @@
 """PhytoGATE Local Disease Database.
 
 Supplies deterministic agronomic treatment protocols and pathology profiles.
-Completely decoupled from vision inference to ensure zero Gemini API consumption
+Completely decoupled from vision inference to ensure zero external API consumption
 for treatment queries.
 """
 
@@ -937,7 +937,7 @@ def get_disease_profile(host: Optional[str], disease: Optional[str]) -> Optional
     """Retrieves the agronomic treatment and management profile for a validated host and disease.
 
     This function is completely local and deterministically retrieves information
-    from DISEASE_PROFILES. Zero Gemini calls are made.
+    from DISEASE_PROFILES. Zero external AI calls are made.
     """
     if not host or not disease:
         return None
