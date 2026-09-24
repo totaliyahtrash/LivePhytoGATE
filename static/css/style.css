@@ -1,0 +1,878 @@
+/* ==========================================================================
+   PhytoGATE Design System — Inspired by Starbucks Retail Flagship
+   
+   Color Palette:
+     - Page Canvas: Warm Cream (#f2f0eb) / Ceramic (#edebe9)
+     - House Green: #1E3932 (Header, Footer, Deep feature bands)
+     - Starbucks Green: #006241 (Primary Brand, Headings)
+     - Green Accent: #00754A (CTAs, Full-pill Buttons, Active states)
+     - Green Light: #d4e9e2 (Mint tints, badges, backgrounds)
+     - Gold: #cba258 (Special status ceremony)
+     - Text Primary: rgba(0, 0, 0, 0.87)
+     - Text Soft: rgba(0, 0, 0, 0.58)
+     - Card Surface: #ffffff
+   
+   Geometry:
+     - 50px full-pill buttons with scale(0.95) active micro-interaction
+     - 12px card border radius with layered whisper-soft dual-shadow stack
+     - Tight -0.01em tracking across humanist typography
+   ========================================================================== */
+
+:root {
+  /* Canvas & Surfaces */
+  --bg-primary: #f2f0eb;         /* Neutral Warm Cream Canvas */
+  --bg-surface: #ffffff;         /* Crisp White Card Surface */
+  --bg-surface-warm: #edebe9;    /* Ceramic Warm Zone Separator */
+  --bg-input: #f9f9f9;           /* Neutral Cool Utility Surface */
+
+  /* Four-Tier Green Brand System */
+  --green-starbucks: #006241;    /* Historic Brand Green: Headings & Signals */
+  --green-accent: #00754A;       /* Primary CTA & Pill Fill */
+  --green-house: #1E3932;        /* Espresso-Dark Deep Green: Bands, Header, Footer */
+  --green-uplift: #2b5148;       /* Mid-dark Green Accent */
+  --green-light: #d4e9e2;        /* Mint Wash Tint */
+
+  /* Secondary & Status Accents */
+  --gold: #cba258;               /* Reserved Status Gold */
+  --gold-lightest: #faf6ee;      /* Cream-Gold Wash */
+  --status-crimson: #c82014;     /* Semantic Destructive / Error */
+  --status-amber: #b45309;       /* Semantic Warning / Withheld */
+  --status-amber-light: #fffbeb;  /* Warm Amber Background */
+
+  /* Text Ladders */
+  --text-primary: rgba(0, 0, 0, 0.87);     /* Primary Heading & Body Text */
+  --text-soft: rgba(0, 0, 0, 0.58);        /* Secondary Metadata */
+  --text-dim: rgba(0, 0, 0, 0.40);         /* Tertiary / Caption */
+  --text-white: #ffffff;                   /* White Text on House Green */
+  --text-white-soft: rgba(255, 255, 255, 0.75);
+
+  /* Hairlines & Borders */
+  --border-hairline: #e2e0dc;
+  --border-input: #d6dbde;
+  --border-focus: #00754A;
+
+  /* Typography */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+
+  /* Elevation Shadows (Layered Whisper-Soft Stack) */
+  --shadow-card: 0px 0px 0.5px 0px rgba(0, 0, 0, 0.14), 0px 1px 1px 0px rgba(0, 0, 0, 0.24);
+  --shadow-header: 0 1px 3px rgba(0, 0, 0, 0.1), 0 2px 2px rgba(0, 0, 0, 0.06), 0 0 2px rgba(0, 0, 0, 0.07);
+  --shadow-frap: 0 0 6px rgba(0, 0, 0, 0.24), 0 8px 12px rgba(0, 0, 0, 0.14);
+
+  /* Geometric Radii */
+  --radius-card: 12px;
+  --radius-pill: 50px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  letter-spacing: -0.01em;
+  line-height: 1.5;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ==========================================================================
+   Top Header: Deep House Green (#1E3932) Band
+   ========================================================================== */
+.telemetry-header {
+  background-color: var(--green-house);
+  color: var(--text-white);
+  padding: 0.85rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  box-shadow: var(--shadow-header);
+  z-index: 10;
+}
+
+.brand-section {
+  display: flex;
+  align-items: baseline;
+  gap: 0.85rem;
+}
+
+.brand-title {
+  font-family: var(--font-sans);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-white);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brand-dot {
+  width: 9px;
+  height: 9px;
+  background-color: var(--green-light);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--green-light);
+  animation: pulse-dot 2.5s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+.brand-tagline {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--green-light);
+  text-transform: uppercase;
+  background: rgba(212, 233, 226, 0.15);
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-pill);
+}
+
+.telemetry-strip {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.78rem;
+  color: var(--text-white-soft);
+}
+
+.telemetry-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.telemetry-label {
+  color: rgba(255, 255, 255, 0.65);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+}
+
+.telemetry-value {
+  color: var(--text-white);
+  font-weight: 600;
+}
+
+.telemetry-status-ok {
+  color: #a7f3d0;
+}
+
+/* ==========================================================================
+   Main Application Layout
+   ========================================================================== */
+.app-container {
+  display: grid;
+  grid-template-columns: 390px 1fr;
+  flex: 1;
+  max-width: 1560px;
+  width: 100%;
+  margin: 0 auto;
+  gap: 1.75rem;
+  padding: 1.75rem 2rem;
+}
+
+@media (max-width: 1024px) {
+  .app-container {
+    grid-template-columns: 1fr;
+    padding: 1.25rem;
+  }
+}
+
+/* ==========================================================================
+   Left Sidebar: Ingest Panel (White Card, 12px Radius)
+   ========================================================================== */
+.ingest-panel {
+  background-color: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  align-self: flex-start;
+}
+
+.panel-header {
+  border-bottom: 1px solid var(--border-hairline);
+  padding-bottom: 0.85rem;
+}
+
+.panel-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--green-starbucks);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Pill Buttons (50px Radius + Scale 0.95 Press) */
+.btn-pill-secondary {
+  background: transparent;
+  color: var(--text-soft);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-pill);
+  padding: 5px 14px;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-pill-secondary:hover {
+  background: var(--bg-surface-warm);
+  color: var(--text-primary);
+  border-color: var(--text-soft);
+}
+
+.btn-pill-secondary:active {
+  transform: scale(0.95);
+}
+
+/* Dropzone (12px Card Inside Sidebar) */
+.dropzone {
+  border: 2px dashed var(--border-input);
+  background-color: var(--bg-input);
+  border-radius: var(--radius-card);
+  padding: 2rem 1.25rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--green-accent);
+  background-color: rgba(212, 233, 226, 0.25);
+}
+
+.dropzone-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.dropzone-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.dropzone-subtext {
+  font-size: 0.75rem;
+  color: var(--text-soft);
+}
+
+#file-input {
+  display: none;
+}
+
+/* Image Preview */
+.preview-container {
+  display: none;
+  flex-direction: column;
+  background: var(--bg-input);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.preview-media-box {
+  width: 100%;
+  height: 220px;
+  background: #111;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-media-box img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.preview-meta {
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-soft);
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-hairline);
+}
+
+/* Samples Section */
+.samples-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.samples-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.samples-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+.sample-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border-hairline);
+  border-radius: 8px;
+  padding: 0.35rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.sample-card:hover {
+  border-color: var(--green-accent);
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.sample-card:active {
+  transform: scale(0.96);
+}
+
+.sample-thumb {
+  width: 100%;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+
+.sample-name {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  text-align: center;
+}
+
+/* Action Button: Green Accent (#00754A) 50px Full-Pill */
+.btn-action {
+  background-color: var(--green-accent);
+  color: #ffffff;
+  border: 1px solid var(--green-accent);
+  border-radius: var(--radius-pill);
+  padding: 0.85rem 1.5rem;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.btn-action:hover:not(:disabled) {
+  background-color: #008856;
+  box-shadow: 0 2px 8px rgba(0, 117, 74, 0.35);
+}
+
+.btn-action:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.btn-action:disabled {
+  background-color: var(--border-input);
+  border-color: var(--border-input);
+  color: rgba(0, 0, 0, 0.35);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   Right Main Panel: Diagnostic Core Output
+   ========================================================================== */
+.results-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Standby State */
+.standby-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4.5rem 2rem;
+  border: 1px dashed var(--border-hairline);
+  border-radius: var(--radius-card);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  color: var(--text-soft);
+}
+
+.standby-icon {
+  font-size: 3.2rem;
+  margin-bottom: 1rem;
+}
+
+.standby-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--green-starbucks);
+  margin-bottom: 0.5rem;
+}
+
+.standby-desc {
+  max-width: 500px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-soft);
+}
+
+/* Loading State */
+.loading-state {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4.5rem 2rem;
+  gap: 1.25rem;
+  background: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.spinner {
+  width: 52px;
+  height: 52px;
+  border: 3px solid var(--green-light);
+  border-top-color: var(--green-accent);
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--green-starbucks);
+}
+
+.loading-subtext {
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+/* Verdict Container */
+.verdict-container {
+  display: none;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ==========================================================================
+   Content Cards (White Surface, 12px Radius, Whisper-Soft Shadow)
+   ========================================================================== */
+.card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--border-hairline);
+  overflow: hidden;
+}
+
+.card-header {
+  background: var(--bg-surface-warm);
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border-hairline);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-header-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--green-house);
+}
+
+/* Badges (Full-Pill Format) */
+.status-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.28rem 0.75rem;
+  border-radius: var(--radius-pill);
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+}
+
+.badge-success {
+  background: var(--green-light);
+  color: var(--green-starbucks);
+  border: 1px solid rgba(0, 98, 65, 0.2);
+}
+
+.badge-withheld {
+  background: var(--status-amber-light);
+  color: var(--status-amber);
+  border: 1px solid rgba(180, 83, 9, 0.25);
+}
+
+.badge-cached {
+  background: var(--gold-lightest);
+  color: var(--gold);
+  border: 1px solid rgba(203, 162, 88, 0.35);
+  font-weight: 700;
+}
+
+.badge-agronomy {
+  background: var(--green-light);
+  color: var(--green-accent);
+  border: 1px solid rgba(0, 117, 74, 0.25);
+}
+
+.heuristic-tag {
+  font-size: 0.7rem;
+  color: var(--text-soft);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.card-body {
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ==========================================================================
+   Disease-First Verdict Hero Presentation
+   ========================================================================== */
+.diagnosis-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.diagnosis-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--green-accent);
+}
+
+.diagnosis-name {
+  font-size: 2.35rem;
+  font-weight: 800;
+  color: var(--green-house);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.diagnosis-name.status-healthy {
+  color: var(--green-starbucks);
+}
+
+.diagnosis-name.status-withheld {
+  color: var(--status-amber);
+  font-size: 1.95rem;
+}
+
+/* Metrics Grid (Ceramic Tinted Card) */
+.metrics-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  padding: 1rem 1.5rem;
+  background: var(--bg-surface-warm);
+  border-radius: 8px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metric-key {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+
+.metric-val {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--green-house);
+}
+
+.val-high { color: var(--green-starbucks); }
+.val-medium { color: var(--green-accent); }
+.val-low { color: var(--status-amber); }
+.val-unknown { color: var(--text-soft); }
+
+/* Evidence & Sections */
+.section-subheading {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--green-starbucks);
+  margin-bottom: 0.65rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.evidence-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.evidence-list li {
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  line-height: 1.45;
+}
+
+.evidence-list li::before {
+  content: '✔';
+  color: var(--green-accent);
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.differential-text {
+  font-size: 0.92rem;
+  color: var(--text-soft);
+  line-height: 1.5;
+}
+
+/* Withheld Rationale Box */
+.withheld-box {
+  background: var(--status-amber-light);
+  border: 1px solid rgba(180, 83, 9, 0.25);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.withheld-box-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--status-amber);
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.withheld-box-desc {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* ==========================================================================
+   Agronomic Treatment Grid & Notice
+   ========================================================================== */
+.treatment-notice-box {
+  background: var(--bg-surface-warm);
+  border: 1px dashed var(--border-input);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  color: var(--text-soft);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  font-weight: 500;
+}
+
+.treatment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .treatment-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.treatment-block {
+  background: var(--bg-surface-warm);
+  border-radius: 8px;
+  padding: 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.treatment-block-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--green-starbucks);
+}
+
+.treatment-block ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.treatment-block li {
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.45;
+}
+
+.treatment-block li::before {
+  content: '•';
+  color: var(--green-accent);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ==========================================================================
+   Visual Overlays Inspector
+   ========================================================================== */
+.overlay-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.tab-btn {
+  background: var(--bg-surface-warm);
+  border: 1px solid var(--border-hairline);
+  color: var(--text-soft);
+  padding: 0.45rem 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  background: #ffffff;
+  color: var(--text-primary);
+}
+
+.tab-btn:active {
+  transform: scale(0.95);
+}
+
+.tab-btn.active {
+  background: var(--green-accent);
+  border-color: var(--green-accent);
+  color: #ffffff;
+}
+
+.overlay-display-box {
+  width: 100%;
+  max-height: 480px;
+  background: #111;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.overlay-display-box img {
+  max-width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+}
+
+.overlay-disclaimer-pill {
+  font-size: 0.75rem;
+  background: var(--bg-surface-warm);
+  color: var(--text-soft);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-pill);
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ==========================================================================
+   Footer: Deep House Green (#1E3932) Band
+   ========================================================================== */
+footer {
+  background-color: var(--green-house);
+  color: var(--text-white-soft);
+  padding: 1.25rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: auto;
+}

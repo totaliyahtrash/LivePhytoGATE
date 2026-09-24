@@ -1,0 +1,575 @@
+/**
+ * PhytoGATE Diagnostic Core — Frontend Application Controller
+ * 
+ * Strict architectural rules enforced:
+ * 1. Exactly ONE POST /api/diagnose per user action.
+ * 2. Complete previous state clearing before launching a diagnosis.
+ * 3. Never display fake percentages or stale metrics on WITHHELD results.
+ * 4. Distinct presentation for Cache Hits vs Live Inferences.
+ * 5. Vendor-neutral product presentation (PhytoGATE Vision Core).
+ */
+
+document.addEventListener("DOMContentLoaded", () => {
+  // DOM Elements
+  const dropzone = document.getElementById("dropzone");
+  const fileInput = document.getElementById("file-input");
+  const previewContainer = document.getElementById("preview-container");
+  const previewImg = document.getElementById("preview-img");
+  const previewFilename = document.getElementById("preview-filename");
+  const previewFilesize = document.getElementById("preview-filesize");
+  const btnDiagnose = document.getElementById("btn-diagnose");
+  const btnReset = document.getElementById("btn-reset");
+  const samplesGrid = document.getElementById("samples-grid");
+
+  // Output containers
+  const standbyState = document.getElementById("standby-state");
+  const loadingState = document.getElementById("loading-state");
+  const loadingText = document.getElementById("loading-text");
+  const verdictContainer = document.getElementById("verdict-container");
+  
+  // Primary Verdict
+  const primaryVerdictCard = document.getElementById("primary-verdict-card");
+  const verdictBadge = document.getElementById("verdict-badge");
+  const badgeCached = document.getElementById("badge-cached");
+  const diagnosisHeaderLabel = document.getElementById("diagnosis-header-label");
+  const verdictDiagnosisTitle = document.getElementById("verdict-diagnosis-title");
+  const metricHost = document.getElementById("metric-host");
+  const metricAssessment = document.getElementById("metric-assessment");
+  const metricConfidenceItem = document.getElementById("metric-confidence-item");
+  const metricConfidenceDesc = document.getElementById("metric-confidence-desc");
+  const metricOrigin = document.getElementById("metric-origin");
+  
+  // Evidence & Differential
+  const sectionEvidence = document.getElementById("section-evidence");
+  const evidenceList = document.getElementById("evidence-list");
+  const sectionDifferential = document.getElementById("section-differential");
+  const alternativeDiagnosisText = document.getElementById("alternative-diagnosis-text");
+  const sectionLimitations = document.getElementById("section-limitations");
+  const limitationsList = document.getElementById("limitations-list");
+  const sectionWithheldReason = document.getElementById("section-withheld-reason");
+  const withheldReasonText = document.getElementById("withheld-reason-text");
+
+  // Treatment Card
+  const treatmentCard = document.getElementById("treatment-card");
+  const treatmentBadge = document.getElementById("treatment-badge");
+  const treatmentUnavailableNotice = document.getElementById("treatment-unavailable-notice");
+  const treatmentGrid = document.getElementById("treatment-grid");
+  const treatmentCultural = document.getElementById("treatment-cultural");
+  const treatmentChemical = document.getElementById("treatment-chemical");
+  const treatmentOrganic = document.getElementById("treatment-organic");
+  const treatmentPrevention = document.getElementById("treatment-prevention");
+
+  // Overlay Card & Tabs
+  const overlayCard = document.getElementById("overlay-card");
+  const overlayImg = document.getElementById("overlay-img");
+  const overlayDisclaimerText = document.getElementById("overlay-disclaimer-text");
+  const tabBtns = document.querySelectorAll(".tab-btn");
+
+  // Telemetry items
+  const telStatus = document.getElementById("tel-status");
+  const telModel = document.getElementById("tel-model");
+  const telCache = document.getElementById("tel-cache");
+
+  // Active state
+  let currentFile = null;
+  let currentPreviewUrl = null;
+  let activeVisualizations = null;
+
+  // Initialize
+  fetchTelemetry();
+  fetchSamples();
+
+  // -------------------------------------------------------------
+  // Drag & Drop / File Selection
+  // -------------------------------------------------------------
+  dropzone.addEventListener("click", () => fileInput.click());
+
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+  });
+
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.classList.remove("dragover");
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleSelectedFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleSelectedFile(e.target.files[0]);
+    }
+  });
+
+  btnReset.addEventListener("click", () => {
+    resetAllState();
+  });
+
+  function handleSelectedFile(file) {
+    if (!file.type.startsWith("image/") && !file.name.match(/\.(jpg|jpeg|png|webp|bmp|tif|tiff)$/i)) {
+      alert("Please upload a standard image file (JPG, JPEG, PNG, WEBP).");
+      return;
+    }
+
+    currentFile = file;
+    if (currentPreviewUrl) {
+      URL.revokeObjectURL(currentPreviewUrl);
+    }
+    currentPreviewUrl = URL.createObjectURL(file);
+
+    // Update preview
+    previewImg.src = currentPreviewUrl;
+    previewFilename.textContent = file.name;
+    previewFilesize.textContent = `${(file.size / 1024).toFixed(1)} KB`;
+    previewContainer.style.display = "flex";
+    btnDiagnose.disabled = false;
+
+    // Reset previous diagnostic results while preserving preview
+    clearDiagnosticOutput();
+  }
+
+  // -------------------------------------------------------------
+  // Samples Loading
+  // -------------------------------------------------------------
+  async function fetchSamples() {
+    try {
+      const res = await fetch("/api/samples");
+      if (!res.ok) return;
+      const samples = await res.json();
+      samplesGrid.innerHTML = "";
+
+      if (samples.length === 0) {
+        samplesGrid.innerHTML = '<div style="grid-column: span 3; font-size: 0.72rem; color: var(--text-soft);">No built-in samples found.</div>';
+        return;
+      }
+
+      samples.forEach((sample) => {
+        const card = document.createElement("div");
+        card.className = "sample-card";
+        card.innerHTML = `
+          <img src="${sample.url}" class="sample-thumb" alt="${sample.filename}" loading="lazy">
+          <div class="sample-name" title="${sample.filename}">${sample.filename}</div>
+        `;
+        card.addEventListener("click", async () => {
+          try {
+            const resp = await fetch(sample.url);
+            const blob = await resp.blob();
+            const file = new File([blob], sample.filename, { type: blob.type || "image/jpeg" });
+            handleSelectedFile(file);
+          } catch (err) {
+            console.error("Failed to load sample:", err);
+          }
+        });
+        samplesGrid.appendChild(card);
+      });
+    } catch (e) {
+      console.warn("Could not load samples:", e);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Safe Telemetry
+  // -------------------------------------------------------------
+  async function fetchTelemetry() {
+    try {
+      const res = await fetch("/api/telemetry");
+      if (!res.ok) return;
+      const data = await res.json();
+      
+      telStatus.textContent = data.status || "ONLINE";
+      telStatus.className = "telemetry-value telemetry-status-ok";
+      
+      // Sanitized user-facing product name
+      telModel.textContent = "PhytoGATE Vision Core";
+
+      if (data.cache) {
+        telCache.textContent = `${data.cache.cached_entries_count} entries (${data.cache.total_cache_hits} hits)`;
+      }
+    } catch (err) {
+      telStatus.textContent = "OFFLINE";
+      telStatus.className = "telemetry-value";
+      telStatus.style.color = "var(--status-crimson)";
+    }
+  }
+
+  // -------------------------------------------------------------
+  // State Clearing (Zero stale values)
+  // -------------------------------------------------------------
+  function clearDiagnosticOutput() {
+    standbyState.style.display = "flex";
+    loadingState.style.display = "none";
+    verdictContainer.style.display = "none";
+
+    // Clear text values
+    if (diagnosisHeaderLabel) diagnosisHeaderLabel.textContent = "DETECTED DISEASE";
+    verdictDiagnosisTitle.textContent = "—";
+    verdictDiagnosisTitle.className = "diagnosis-name";
+    if (metricHost) metricHost.textContent = "—";
+    metricAssessment.textContent = "—";
+    metricAssessment.className = "metric-val";
+    if (metricConfidenceItem) metricConfidenceItem.style.display = "none";
+    if (metricConfidenceDesc) metricConfidenceDesc.textContent = "—";
+    metricOrigin.textContent = "PhytoGATE Vision Core";
+
+    evidenceList.innerHTML = "";
+    sectionEvidence.style.display = "none";
+
+    alternativeDiagnosisText.textContent = "";
+    sectionDifferential.style.display = "none";
+
+    limitationsList.innerHTML = "";
+    sectionLimitations.style.display = "none";
+
+    sectionWithheldReason.style.display = "none";
+    withheldReasonText.textContent = "";
+
+    treatmentCard.style.display = "none";
+    if (treatmentUnavailableNotice) treatmentUnavailableNotice.style.display = "none";
+    if (treatmentGrid) treatmentGrid.style.display = "grid";
+    if (treatmentBadge) treatmentBadge.textContent = "LOCAL AGRONOMY DB";
+    treatmentCultural.innerHTML = "";
+    treatmentChemical.innerHTML = "";
+    treatmentOrganic.innerHTML = "";
+    treatmentPrevention.innerHTML = "";
+
+    overlayCard.style.display = "none";
+    overlayImg.src = "";
+    activeVisualizations = null;
+  }
+
+  function resetAllState() {
+    clearDiagnosticOutput();
+    currentFile = null;
+    if (currentPreviewUrl) {
+      URL.revokeObjectURL(currentPreviewUrl);
+      currentPreviewUrl = null;
+    }
+    previewImg.src = "";
+    previewContainer.style.display = "none";
+    btnDiagnose.disabled = true;
+    fileInput.value = "";
+  }
+
+  // -------------------------------------------------------------
+  // Execute Diagnostic Flow
+  // -------------------------------------------------------------
+  btnDiagnose.addEventListener("click", async () => {
+    if (!currentFile) return;
+
+    // 1. Clear ALL previous state before launching request
+    clearDiagnosticOutput();
+    standbyState.style.display = "none";
+    loadingState.style.display = "flex";
+    btnDiagnose.disabled = true;
+    loadingText.textContent = "PHYTOGATE DIAGNOSTIC CORE • ANALYZING SPECIMEN...";
+
+    const formData = new FormData();
+    formData.append("file", currentFile);
+
+    try {
+      // Exactly ONE POST /api/diagnose
+      const response = await fetch("/api/diagnose", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned status HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      renderVerdict(result);
+    } catch (err) {
+      console.error("Diagnosis request error:", err);
+      renderNetworkError(err.message);
+    } finally {
+      loadingState.style.display = "none";
+      btnDiagnose.disabled = false;
+      fetchTelemetry(); // Update cache count
+    }
+  });
+
+  // -------------------------------------------------------------
+  // Render Structured Diagnostic Result
+  // -------------------------------------------------------------
+  function renderVerdict(result) {
+    // CRITICAL: Complete wipe of any prior UI state before populating new response
+    clearDiagnosticOutput();
+    standbyState.style.display = "none";
+    loadingState.style.display = "none";
+    verdictContainer.style.display = "flex";
+
+    activeVisualizations = result.visualizations || {};
+
+    if (result.status === "SUCCESS") {
+      // ----------------- SUCCESS STATE -----------------
+      primaryVerdictCard.className = "card verdict-card";
+      verdictBadge.textContent = "CONFIRMED";
+      verdictBadge.className = "status-badge badge-success";
+
+      if (result.is_cached) {
+        badgeCached.style.display = "inline-flex";
+        badgeCached.className = "status-badge badge-cached";
+        badgeCached.textContent = "DETERMINISTIC CACHE HIT";
+        metricOrigin.textContent = "Deterministic Cache";
+      } else {
+        badgeCached.style.display = "none";
+        metricOrigin.textContent = "PhytoGATE Vision Core";
+      }
+
+      // Check if genuinely classified as healthy
+      const isHealthy = (result.disease && result.disease.toLowerCase() === "healthy") || 
+                        (result.diagnosis && result.diagnosis.toLowerCase().includes("healthy"));
+
+      if (isHealthy) {
+        if (diagnosisHeaderLabel) diagnosisHeaderLabel.textContent = "PLANT STATUS";
+        verdictDiagnosisTitle.textContent = "HEALTHY";
+        verdictDiagnosisTitle.className = "diagnosis-name status-healthy";
+      } else {
+        if (diagnosisHeaderLabel) diagnosisHeaderLabel.textContent = "DETECTED DISEASE";
+        // Extract pure disease name - NOT host prefix
+        let diseaseName = result.disease;
+        if (!diseaseName && result.diagnosis) {
+          diseaseName = result.diagnosis.includes("—") ? result.diagnosis.split("—")[1].trim() : result.diagnosis;
+        }
+        verdictDiagnosisTitle.textContent = diseaseName || "Unknown Condition";
+        verdictDiagnosisTitle.className = "diagnosis-name";
+      }
+
+      if (metricHost) {
+        metricHost.textContent = result.host || "Unknown";
+      }
+      
+      const assess = (result.assessment || "unknown").toUpperCase();
+      metricAssessment.textContent = assess;
+      metricAssessment.className = `metric-val val-${result.assessment || 'unknown'}`;
+
+      if (result.confidence_score !== null && result.confidence_score !== undefined) {
+        if (metricConfidenceItem) metricConfidenceItem.style.display = "flex";
+        if (metricConfidenceDesc) metricConfidenceDesc.textContent = `${(result.confidence_score * 100).toFixed(1)}%`;
+      } else {
+        if (metricConfidenceItem) metricConfidenceItem.style.display = "none";
+        if (metricConfidenceDesc) metricConfidenceDesc.textContent = "—";
+      }
+
+      // Evidence
+      if (result.visual_evidence && result.visual_evidence.length > 0) {
+        sectionEvidence.style.display = "block";
+        evidenceList.innerHTML = "";
+        result.visual_evidence.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          evidenceList.appendChild(li);
+        });
+      } else {
+        sectionEvidence.style.display = "none";
+        evidenceList.innerHTML = "";
+      }
+
+      // Alternative diagnosis
+      if (result.alternative_diagnosis) {
+        sectionDifferential.style.display = "block";
+        alternativeDiagnosisText.textContent = result.alternative_diagnosis;
+      } else {
+        sectionDifferential.style.display = "none";
+        alternativeDiagnosisText.textContent = "";
+      }
+
+      // Limitations
+      if (result.limitations && result.limitations.length > 0) {
+        sectionLimitations.style.display = "block";
+        limitationsList.innerHTML = "";
+        result.limitations.forEach(lim => {
+          const li = document.createElement("li");
+          li.textContent = lim;
+          limitationsList.appendChild(li);
+        });
+      } else {
+        sectionLimitations.style.display = "none";
+        limitationsList.innerHTML = "";
+      }
+
+      // Treatment Profile (From Local Database)
+      if (result.treatment) {
+        treatmentCard.style.display = "block";
+        if (treatmentUnavailableNotice) treatmentUnavailableNotice.style.display = "none";
+        if (treatmentGrid) treatmentGrid.style.display = "grid";
+        if (treatmentBadge) treatmentBadge.textContent = "LOCAL AGRONOMY DB";
+        populateTreatmentList(treatmentCultural, result.treatment.cultural_controls);
+        populateTreatmentList(treatmentChemical, result.treatment.chemical_treatments);
+        populateTreatmentList(treatmentOrganic, result.treatment.organic_treatments);
+        populateTreatmentList(treatmentPrevention, result.treatment.prevention);
+      } else if (!isHealthy) {
+        // No local treatment in DB -> display honest agronomic notice, zero invented treatments
+        treatmentCard.style.display = "block";
+        if (treatmentUnavailableNotice) {
+          treatmentUnavailableNotice.style.display = "block";
+          treatmentUnavailableNotice.textContent = "Treatment information is not available in the local knowledge base.";
+        }
+        if (treatmentGrid) treatmentGrid.style.display = "none";
+        if (treatmentBadge) treatmentBadge.textContent = "LOCAL DB: NOT FOUND";
+      } else {
+        treatmentCard.style.display = "none";
+        if (treatmentUnavailableNotice) treatmentUnavailableNotice.style.display = "none";
+        if (treatmentGrid) treatmentGrid.style.display = "grid";
+        treatmentCultural.innerHTML = "";
+        treatmentChemical.innerHTML = "";
+        treatmentOrganic.innerHTML = "";
+        treatmentPrevention.innerHTML = "";
+      }
+
+      // Visual Overlays
+      setupOverlays();
+
+    } else {
+      // ----------------- WITHHELD STATE -----------------
+      primaryVerdictCard.className = "card verdict-card";
+      verdictBadge.textContent = "DIAGNOSIS WITHHELD";
+      verdictBadge.className = "status-badge badge-withheld";
+      badgeCached.style.display = "none";
+
+      if (diagnosisHeaderLabel) diagnosisHeaderLabel.textContent = "STATUS";
+      verdictDiagnosisTitle.textContent = "DIAGNOSIS WITHHELD";
+      verdictDiagnosisTitle.className = "diagnosis-name status-withheld";
+
+      if (metricHost) {
+        metricHost.textContent = result.host || "Unconfirmed";
+      }
+      metricAssessment.textContent = "WITHHELD";
+      metricAssessment.className = "metric-val val-unknown";
+      if (metricConfidenceItem) metricConfidenceItem.style.display = "none";
+      if (metricConfidenceDesc) metricConfidenceDesc.textContent = "None";
+      metricOrigin.textContent = result.error_category || "INSPECTION_WITHHELD";
+
+      // Withheld rationale
+      sectionWithheldReason.style.display = "block";
+      withheldReasonText.textContent = result.error_message || "The vision service could not complete the analysis. No diagnosis was generated. Please try again later.";
+
+      // Evidence or limitations if provided by model
+      if (result.visual_evidence && result.visual_evidence.length > 0) {
+        sectionEvidence.style.display = "block";
+        evidenceList.innerHTML = "";
+        result.visual_evidence.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          evidenceList.appendChild(li);
+        });
+      } else {
+        sectionEvidence.style.display = "none";
+        evidenceList.innerHTML = "";
+      }
+
+      if (result.limitations && result.limitations.length > 0) {
+        sectionLimitations.style.display = "block";
+        limitationsList.innerHTML = "";
+        result.limitations.forEach(lim => {
+          const li = document.createElement("li");
+          li.textContent = lim;
+          limitationsList.appendChild(li);
+        });
+      } else {
+        sectionLimitations.style.display = "none";
+        limitationsList.innerHTML = "";
+      }
+
+      sectionDifferential.style.display = "none";
+      alternativeDiagnosisText.textContent = "";
+
+      // NEVER show treatment or stale metrics on withheld!
+      treatmentCard.style.display = "none";
+      treatmentCultural.innerHTML = "";
+      treatmentChemical.innerHTML = "";
+      treatmentOrganic.innerHTML = "";
+      treatmentPrevention.innerHTML = "";
+      overlayCard.style.display = "none";
+      overlayImg.src = "";
+    }
+  }
+
+  function renderNetworkError(errorMessage) {
+    clearDiagnosticOutput();
+    standbyState.style.display = "none";
+    loadingState.style.display = "none";
+    verdictContainer.style.display = "flex";
+
+    primaryVerdictCard.className = "card verdict-card";
+    verdictBadge.textContent = "DIAGNOSIS WITHHELD";
+    verdictBadge.className = "status-badge badge-withheld";
+    badgeCached.style.display = "none";
+
+    if (diagnosisHeaderLabel) diagnosisHeaderLabel.textContent = "STATUS";
+    verdictDiagnosisTitle.textContent = "DIAGNOSIS WITHHELD";
+    verdictDiagnosisTitle.className = "diagnosis-name status-withheld";
+
+    if (metricHost) {
+      metricHost.textContent = "Unconfirmed";
+    }
+    metricAssessment.textContent = "WITHHELD";
+    metricAssessment.className = "metric-val val-unknown";
+    if (metricConfidenceItem) metricConfidenceItem.style.display = "none";
+    if (metricConfidenceDesc) metricConfidenceDesc.textContent = "None";
+    metricOrigin.textContent = "SERVICE_UNAVAILABLE";
+
+    sectionWithheldReason.style.display = "block";
+    withheldReasonText.textContent = `Communication error: ${errorMessage}. The system refuses to fabricate a fallback diagnosis.`;
+
+    treatmentCard.style.display = "none";
+    overlayCard.style.display = "none";
+  }
+
+  function populateTreatmentList(container, items) {
+    container.innerHTML = "";
+    if (!items || items.length === 0) {
+      container.innerHTML = "<li>No specific protocol recorded in local database.</li>";
+      return;
+    }
+    items.forEach(item => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      container.appendChild(li);
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Overlays & Heuristic Inspection
+  // -------------------------------------------------------------
+  function setupOverlays() {
+    overlayCard.style.display = "block";
+    // Default to original
+    setActiveOverlayTab("original");
+
+    tabBtns.forEach(btn => {
+      btn.onclick = () => {
+        const view = btn.getAttribute("data-view");
+        setActiveOverlayTab(view);
+      };
+    });
+  }
+
+  function setActiveOverlayTab(view) {
+    tabBtns.forEach(b => b.classList.remove("active"));
+    const activeBtn = document.querySelector(`.tab-btn[data-view="${view}"]`);
+    if (activeBtn) activeBtn.classList.add("active");
+
+    if (view === "original") {
+      overlayImg.src = currentPreviewUrl;
+      overlayDisclaimerText.textContent = "Original uploaded field specimen (preserved at full visual fidelity).";
+    } else if (view === "lesion" && activeVisualizations && activeVisualizations.lesion_segmentation) {
+      overlayImg.src = activeVisualizations.lesion_segmentation.image_data;
+      overlayDisclaimerText.textContent = activeVisualizations.lesion_segmentation.disclaimer;
+    } else if (view === "heatmap" && activeVisualizations && activeVisualizations.contrast_heatmap) {
+      overlayImg.src = activeVisualizations.contrast_heatmap.image_data;
+      overlayDisclaimerText.textContent = activeVisualizations.contrast_heatmap.disclaimer;
+    } else {
+      overlayImg.src = currentPreviewUrl;
+      overlayDisclaimerText.textContent = "Inspection visualization unavailable for this view.";
+    }
+  }
+
+});

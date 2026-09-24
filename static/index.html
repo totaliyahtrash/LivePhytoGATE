@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhytoGATE — Plant Pathology Intelligence • Diagnostic Core</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <!-- Top House Green Telemetry Header -->
+  <header class="telemetry-header">
+    <div class="brand-section">
+      <div class="brand-title">
+        <span class="brand-dot"></span>
+        PHYTOGATE
+      </div>
+      <div class="brand-tagline">PLANT PATHOLOGY INTELLIGENCE</div>
+    </div>
+
+    <div class="telemetry-strip" id="telemetry-bar">
+      <div class="telemetry-item">
+        <span class="telemetry-label">Status:</span>
+        <span class="telemetry-value telemetry-status-ok" id="tel-status">ONLINE</span>
+      </div>
+      <div class="telemetry-item">
+        <span class="telemetry-label">Engine:</span>
+        <span class="telemetry-value" id="tel-model">PhytoGATE Vision Core</span>
+      </div>
+      <div class="telemetry-item">
+        <span class="telemetry-label">Deterministic Cache:</span>
+        <span class="telemetry-value" id="tel-cache">0 entries</span>
+      </div>
+      <div class="telemetry-item">
+        <span class="telemetry-label">Retries:</span>
+        <span class="telemetry-value">0 (Enforced)</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Container -->
+  <main class="app-container">
+    
+    <!-- Left Sidebar: Vision Ingest Panel -->
+    <aside class="ingest-panel">
+      <div class="panel-header">
+        <div class="panel-title">
+          <span>Vision Ingest</span>
+          <button id="btn-reset" class="btn-pill-secondary btn-reset" title="Clear active specimen">Reset</button>
+        </div>
+      </div>
+
+      <!-- File Dropzone -->
+      <div class="dropzone" id="dropzone">
+        <input type="file" id="file-input" accept="image/jpeg,image/jpg,image/png,image/webp,image/*">
+        <div class="dropzone-icon">🌿</div>
+        <div class="dropzone-text">Drop Plant/Leaf Specimen</div>
+        <div class="dropzone-subtext">JPG, JPEG, PNG, WEBP Supported • Normalized to 1024px</div>
+      </div>
+
+      <!-- Image Preview -->
+      <div class="preview-container" id="preview-container">
+        <div class="preview-media-box">
+          <img id="preview-img" src="" alt="Specimen Preview">
+        </div>
+        <div class="preview-meta">
+          <span id="preview-filename">specimen.jpg</span>
+          <span id="preview-filesize">0 KB</span>
+        </div>
+      </div>
+
+      <!-- Built-in Samples Section -->
+      <div class="samples-section">
+        <div class="samples-title">Field Inspection Samples</div>
+        <div class="samples-grid" id="samples-grid">
+          <!-- Dynamically populated from /api/samples -->
+        </div>
+      </div>
+
+      <!-- Action Button -->
+      <button id="btn-diagnose" class="btn-action" disabled>
+        <span>Run Diagnostic</span>
+      </button>
+    </aside>
+
+    <!-- Right Main Panel: Diagnostic Core Output -->
+    <section class="results-panel">
+      
+      <!-- Standby State -->
+      <div class="standby-state" id="standby-state">
+        <div class="standby-icon">🍃</div>
+        <div class="standby-title">Awaiting Specimen Input</div>
+        <div class="standby-desc">
+          Upload a clear photograph of a field leaf or select one of the inspection samples. 
+          PhytoGATE will normalize the image, check the deterministic cache, and perform visual pathology inference via the PhytoGATE Vision Core.
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div class="loading-state" id="loading-state">
+        <div class="spinner"></div>
+        <div class="loading-text" id="loading-text">PHYTOGATE DIAGNOSTIC CORE • ANALYZING SPECIMEN...</div>
+        <div class="loading-subtext">Zero fake predictions • Real-time visual analysis • Canonical taxonomy validation</div>
+      </div>
+
+      <!-- Final Verdict Container -->
+      <div class="verdict-container" id="verdict-container">
+        
+        <!-- Primary Verdict Card -->
+        <div class="card verdict-card" id="primary-verdict-card">
+          <div class="card-header">
+            <span class="card-header-title">Diagnostic Core Verdict</span>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class="status-badge badge-cached" id="badge-cached" style="display: none;">DETERMINISTIC CACHE HIT</span>
+              <span class="status-badge" id="verdict-badge">CONFIRMED</span>
+            </div>
+          </div>
+          
+          <div class="card-body">
+            <!-- Diagnosis Focal Area -->
+            <div class="diagnosis-hero">
+              <span class="diagnosis-label" id="diagnosis-header-label">DETECTED DISEASE</span>
+              <h1 class="diagnosis-name" id="verdict-diagnosis-title">—</h1>
+            </div>
+
+            <!-- Quantitative & Qualitative Indicators -->
+            <div class="metrics-grid">
+              <div class="metric-item">
+                <span class="metric-key">Assessment</span>
+                <span class="metric-val" id="metric-assessment">—</span>
+              </div>
+              <div class="metric-item" id="metric-confidence-item" style="display: none;">
+                <span class="metric-key">Confidence</span>
+                <span class="metric-val" id="metric-confidence-desc">—</span>
+              </div>
+              <div class="metric-item">
+                <span class="metric-key">Inference Engine</span>
+                <span class="metric-val" id="metric-origin">PhytoGATE Vision Core</span>
+              </div>
+              <span id="metric-host" style="display: none;">—</span>
+            </div>
+
+            <!-- Visual Evidence Section -->
+            <div id="section-evidence" style="display: none;">
+              <div class="section-subheading">Visible Foliar Evidence</div>
+              <ul class="evidence-list" id="evidence-list">
+                <!-- Populated dynamically -->
+              </ul>
+            </div>
+
+            <!-- Alternative Diagnosis Section -->
+            <div id="section-differential" style="display: none;">
+              <div class="section-subheading">Differential / Alternative Diagnosis</div>
+              <p class="differential-text" id="alternative-diagnosis-text"></p>
+            </div>
+
+            <!-- Diagnostic Limitations Section -->
+            <div id="section-limitations" style="display: none;">
+              <div class="section-subheading">Diagnostic Notes & Limitations</div>
+              <ul class="evidence-list" id="limitations-list">
+                <!-- Populated dynamically -->
+              </ul>
+            </div>
+
+            <!-- Withheld Reason Box -->
+            <div id="section-withheld-reason" class="withheld-box" style="display: none;">
+              <div class="withheld-box-title">
+                DIAGNOSIS WITHHELD RATIONALE
+              </div>
+              <p class="withheld-box-desc" id="withheld-reason-text"></p>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Agronomic Treatment Card (Local DB) -->
+        <div class="card" id="treatment-card" style="display: none;">
+          <div class="card-header">
+            <span class="card-header-title">Agronomic Management & Treatment Protocol</span>
+            <span class="status-badge badge-agronomy" id="treatment-badge">
+              LOCAL AGRONOMY DB
+            </span>
+          </div>
+          <div class="card-body">
+            <!-- Notice when treatment is unavailable in local DB -->
+            <div id="treatment-unavailable-notice" class="treatment-notice-box" style="display: none;">
+              Treatment information is not available in the local knowledge base.
+            </div>
+
+            <div class="treatment-grid" id="treatment-grid">
+              
+              <div class="treatment-block">
+                <span class="treatment-block-title">Cultural & Mechanical Controls</span>
+                <ul id="treatment-cultural"></ul>
+              </div>
+
+              <div class="treatment-block">
+                <span class="treatment-block-title">Targeted Chemical Treatments</span>
+                <ul id="treatment-chemical"></ul>
+              </div>
+
+              <div class="treatment-block">
+                <span class="treatment-block-title">Organic & Biological Controls</span>
+                <ul id="treatment-organic"></ul>
+              </div>
+
+              <div class="treatment-block">
+                <span class="treatment-block-title">Preventative Crop Management</span>
+                <ul id="treatment-prevention"></ul>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Computer Vision Inspection Overlays -->
+        <div class="card" id="overlay-card" style="display: none;">
+          <div class="card-header">
+            <span class="card-header-title">Computer Vision Inspection Overlays</span>
+            <span class="heuristic-tag">
+              HEURISTIC PREVIEW
+            </span>
+          </div>
+          <div class="card-body">
+            <div class="overlay-tabs">
+              <button class="tab-btn active" data-view="original">Original Specimen</button>
+              <button class="tab-btn" data-view="lesion" id="btn-tab-lesion">Foliar Lesion Segmentation</button>
+              <button class="tab-btn" data-view="heatmap" id="btn-tab-heatmap">Chlorosis Contrast Heatmap</button>
+            </div>
+
+            <div class="overlay-display-box">
+              <img id="overlay-img" src="" alt="Diagnostic Overlay">
+            </div>
+
+            <div class="overlay-disclaimer-pill">
+              <span>ⓘ</span>
+              <span id="overlay-disclaimer-text">
+                Heuristic computer vision segmentation for leaf inspection. NOT deep neural attention weights.
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Deep House Green Footer Band -->
+  <footer>
+    <div>PHYTOGATE ARCHITECTURE • ZERO HARDCODED PREDICTIONS • DETERMINISTIC LOCAL AGRONOMY</div>
+    <div>PHYTOGATE VISION CORE • PLANT PATHOLOGY INTELLIGENCE</div>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
