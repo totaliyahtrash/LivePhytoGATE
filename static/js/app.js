@@ -19,7 +19,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const previewFilesize = document.getElementById("preview-filesize");
   const btnDiagnose = document.getElementById("btn-diagnose");
   const btnReset = document.getElementById("btn-reset");
-  const samplesGrid = document.getElementById("samples-grid");
 
   // Output containers
   const standbyState = document.getElementById("standby-state");
@@ -61,7 +60,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Initialize
   fetchTelemetry();
-  fetchSamples();
 
   // -------------------------------------------------------------
   // Drag & Drop / File Selection
@@ -116,45 +114,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Reset previous diagnostic results while preserving preview
     clearDiagnosticOutput();
-  }
-
-  // -------------------------------------------------------------
-  // Samples Loading
-  // -------------------------------------------------------------
-  async function fetchSamples() {
-    try {
-      const res = await fetch("/api/samples");
-      if (!res.ok) return;
-      const samples = await res.json();
-      samplesGrid.innerHTML = "";
-
-      if (samples.length === 0) {
-        samplesGrid.innerHTML = '<div style="grid-column: span 3; font-size: 0.72rem; color: var(--text-soft);">No built-in samples found.</div>';
-        return;
-      }
-
-      samples.forEach((sample) => {
-        const card = document.createElement("div");
-        card.className = "sample-card";
-        card.innerHTML = `
-          <img src="${sample.url}" class="sample-thumb" alt="${sample.filename}" loading="lazy">
-          <div class="sample-name" title="${sample.filename}">${sample.filename}</div>
-        `;
-        card.addEventListener("click", async () => {
-          try {
-            const resp = await fetch(sample.url);
-            const blob = await resp.blob();
-            const file = new File([blob], sample.filename, { type: blob.type || "image/jpeg" });
-            handleSelectedFile(file);
-          } catch (err) {
-            console.error("Failed to load sample:", err);
-          }
-        });
-        samplesGrid.appendChild(card);
-      });
-    } catch (e) {
-      console.warn("Could not load samples:", e);
-    }
   }
 
   // -------------------------------------------------------------
