@@ -73,6 +73,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def vercel_path_rewrite_middleware(request, call_next):
+    """Restores the original request URL path from Vercel proxy headers."""
+    matched_path = request.headers.get("x-matched-path") or request.headers.get("x-invoke-path")
+    if matched_path and not matched_path.endswith("index.py"):
+        request.scope["path"] = matched_path.split("?")[0]
+    elif request.scope.get("path") in ["/api/index.py", "/api/index"]:
+        request.scope["path"] = "/"
+    return await call_next(request)
+
+
 # Mount static and samples directories if available
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -83,10 +94,6 @@ if SAMPLES_DIR.exists():
 
 @app.get("/", response_class=HTMLResponse)
 @app.get("/index.html", response_class=HTMLResponse)
-@app.get("/api", response_class=HTMLResponse)
-@app.get("/api/", response_class=HTMLResponse)
-@app.get("/api/index", response_class=HTMLResponse)
-@app.get("/api/index.py", response_class=HTMLResponse)
 async def serve_index():
     """Serves the primary PhytoGATE diagnostic dashboard UI."""
     s_dir = get_static_dir()
@@ -94,6 +101,19 @@ async def serve_index():
     if index_path.exists():
         return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
     raise HTTPException(status_code=404, detail="Index HTML not found.")
+
+
+@app.get("/api")
+@app.get("/api/")
+async def api_root_info():
+    """API informational root endpoint."""
+    return {
+        "status": "online",
+        "service": "PhytoGATE Diagnostic Core",
+        "provider": "groq",
+        "model": settings.groq_model,
+        "is_configured": settings.is_groq_configured,
+    }
 
 
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
