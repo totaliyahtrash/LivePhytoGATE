@@ -96,6 +96,27 @@ async def serve_index():
     raise HTTPException(status_code=404, detail="Index HTML not found.")
 
 
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+
+
+@app.get("/static/css/style.css")
+@app.get("/css/style.css")
+async def serve_style_css():
+    target = get_static_dir() / "css" / "style.css"
+    if target.exists():
+        return Response(content=target.read_text(encoding="utf-8"), media_type="text/css")
+    raise HTTPException(status_code=404, detail="CSS not found")
+
+
+@app.get("/static/js/app.js")
+@app.get("/js/app.js")
+async def serve_app_js():
+    target = get_static_dir() / "js" / "app.js"
+    if target.exists():
+        return Response(content=target.read_text(encoding="utf-8"), media_type="application/javascript")
+    raise HTTPException(status_code=404, detail="JS not found")
+
+
 @app.get("/static/{file_path:path}")
 async def serve_static_file(file_path: str):
     """Explicit fallback handler for static assets on serverless runtimes."""
