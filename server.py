@@ -12,11 +12,11 @@ Exposes REST API and serves the diagnostic web console:
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.config import settings
@@ -25,8 +25,38 @@ from src.disease_db import get_disease_profile
 from src.diagnostics import perform_diagnosis, get_telemetry_stats, DiagnosticResult
 
 BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
-SAMPLES_DIR = BASE_DIR / "samples"
+
+
+def get_static_dir() -> Path:
+    """Finds static assets directory across local and serverless environments."""
+    candidates = [
+        BASE_DIR / "static",
+        Path.cwd() / "static",
+        Path("/var/task/static"),
+        Path(__file__).resolve().parent.parent / "static",
+    ]
+    for c in candidates:
+        if c.exists() and c.is_dir():
+            return c
+    return BASE_DIR / "static"
+
+
+def get_samples_dir() -> Path:
+    """Finds samples directory across local and serverless environments."""
+    candidates = [
+        BASE_DIR / "samples",
+        Path.cwd() / "samples",
+        Path("/var/task/samples"),
+        Path(__file__).resolve().parent.parent / "samples",
+    ]
+    for c in candidates:
+        if c.exists() and c.is_dir():
+            return c
+    return BASE_DIR / "samples"
+
+
+STATIC_DIR = get_static_dir()
+SAMPLES_DIR = get_samples_dir()
 
 app = FastAPI(
     title="PhytoGATE Diagnostic Core",
@@ -34,7 +64,7 @@ app = FastAPI(
     version="2.0.0",
 )
 
-# Enable CORS for local testing/development
+# Enable CORS for local testing and Vercel cloud deployment
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,7 +73,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static and samples directories
+# Mount static and samples directories if available
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -51,16 +81,34 @@ if SAMPLES_DIR.exists():
     app.mount("/samples", StaticFiles(directory=str(SAMPLES_DIR)), name="samples")
 
 
-@app.get("/", response_class=FileResponse)
+@app.get("/", response_class=HTMLResponse)
+@app.get("/index.html", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
+@app.get("/api/", response_class=HTMLResponse)
+@app.get("/api/index", response_class=HTMLResponse)
+@app.get("/api/index.py", response_class=HTMLResponse)
 async def serve_index():
     """Serves the primary PhytoGATE diagnostic dashboard UI."""
-    index_path = STATIC_DIR / "index.html"
-    if not index_path.exists():
-        raise HTTPException(status_code=404, detail="Index HTML not found.")
-    return FileResponse(index_path)
+    s_dir = get_static_dir()
+    index_path = s_dir / "index.html"
+    if index_path.exists():
+        return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+    raise HTTPException(status_code=404, detail="Index HTML not found.")
+
+
+@app.get("/static/{file_path:path}")
+async def serve_static_file(file_path: str):
+    """Explicit fallback handler for static assets on serverless runtimes."""
+    s_dir = get_static_dir()
+    target = s_dir / file_path
+    if target.exists() and target.is_file():
+        media_type = "text/css" if file_path.endswith(".css") else ("application/javascript" if file_path.endswith(".js") else None)
+        return FileResponse(target, media_type=media_type)
+    raise HTTPException(status_code=404, detail=f"Static asset '{file_path}' not found.")
 
 
 @app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """Purely local readiness health check.
 
@@ -71,6 +119,7 @@ async def health_check():
 
 
 @app.get("/api/telemetry")
+@app.get("/telemetry")
 async def get_telemetry():
     """Returns safe runtime telemetry and model configuration.
 
@@ -80,12 +129,14 @@ async def get_telemetry():
 
 
 @app.get("/api/taxonomy")
+@app.get("/taxonomy")
 async def get_taxonomy():
     """Returns the controlled canonical crop/disease taxonomy."""
     return get_supported_taxonomy()
 
 
 @app.get("/api/disease/{host}/{disease}")
+@app.get("/disease/{host}/{disease}")
 async def get_disease(host: str, disease: str):
     """Deterministically retrieves local agronomic profile for host and disease.
 
@@ -101,11 +152,13 @@ async def get_disease(host: str, disease: str):
 
 
 @app.get("/api/samples")
+@app.get("/samples-list")
 async def list_sample_images() -> List[Dict[str, Any]]:
     """Returns metadata for built-in sample images available for rapid demonstration."""
     samples = []
-    if SAMPLES_DIR.exists():
-        for file in sorted(SAMPLES_DIR.glob("*.*")):
+    s_dir = get_samples_dir()
+    if s_dir.exists():
+        for file in sorted(s_dir.glob("*.*")):
             if file.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
                 samples.append({
                     "filename": file.name,
@@ -116,6 +169,7 @@ async def list_sample_images() -> List[Dict[str, Any]]:
 
 
 @app.post("/api/diagnose", response_model=DiagnosticResult)
+@app.post("/diagnose", response_model=DiagnosticResult)
 async def diagnose_leaf(file: UploadFile = File(...)):
     """Primary plant disease diagnosis endpoint.
 
